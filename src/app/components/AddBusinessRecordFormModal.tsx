@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import BusinessRecordForm from './BusinessRecordForm';
 import { AiOutlinePlus } from 'react-icons/ai';
+import BusinessRecordForm from './BusinessRecordForm';
 import { BusinessRecord } from '@/types/BusinessRecord';
 
 interface AddBusinessRecordFormModalProps {
@@ -23,23 +23,15 @@ export default function AddBusinessRecordFormModal({ onFormSubmitSuccess }: AddB
       </button>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 overflow-y-auto">
-          {/* Overlay */}
-          <div
-            className="absolute inset-0 bg-black opacity-50"
-            onClick={() => setShowForm(false)}
-          ></div>
-
-          {/* Modal Content */}
-          <div className="relative bg-white shadow-lg rounded max-w-5xl w-full max-h-[90vh] overflow-y-auto z-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-300 bg-opacity-50 overflow-y-auto">
+          <div className="relative bg-white shadow-lg rounded max-w-5xl w-full mx-4 my-10 max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowForm(false)}
-              className="absolute top-2 right-4 text-gray-600 hover:text-gray-800 font-bold text-2xl"
+              className="absolute top-4 right-4 text-3xl text-gray-500 hover:text-gray-700 font-bold focus:outline-none"
             >
               &times;
             </button>
-
-            <div className="p-6 overflow-y-auto max-h-[85vh]">
+            <div className="p-6">
               <BusinessRecordForm
                 onSubmitSuccess={(newRecord: BusinessRecord) => {
                   onFormSubmitSuccess(newRecord);
@@ -49,6 +41,7 @@ export default function AddBusinessRecordFormModal({ onFormSubmitSuccess }: AddB
             </div>
           </div>
         </div>
+
       )}
     </div>
   );

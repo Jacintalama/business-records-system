@@ -7,16 +7,15 @@ export default function ToastProvider() {
   return (
     <ToastContainer
       position="top-right"
-      autoClose={3000}
-      transition={Slide}
+      autoClose={5000}
       hideProgressBar={false}
-      newestOnTop={false}
+      newestOnTop={true}
       closeOnClick
       rtl={false}
       pauseOnFocusLoss
       draggable
       pauseOnHover
-      style={{ zIndex: 99999 }}
+      toastStyle={{ zIndex: 9999 }} // Adjust z-index if necessary
     />
   );
 }

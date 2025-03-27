@@ -23,6 +23,7 @@
     "react-toastify": "^11.0.5",
     "select2": "^4.1.0-rc.0",
     "sequelize": "^6.37.6",
+    "uuid": "^11.1.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

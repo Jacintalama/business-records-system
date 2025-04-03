@@ -15,7 +15,7 @@ export default function ToastProvider() {
       pauseOnFocusLoss
       draggable
       pauseOnHover
-      toastStyle={{ zIndex: 9999 }} // Adjust z-index if necessary
+      toastStyle={{ zIndex: 99999 }} // Adjust z-index if necessary
     />
   );
 }

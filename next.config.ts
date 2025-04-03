@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:3000/api/:path*', // Proxy to Express backend
+        destination: `${process.env.NEXT_PUBLIC_API_URL}/api/:path*`, // Proxy to Express backend using env variable
       },
     ];
   },

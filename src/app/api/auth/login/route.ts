@@ -8,7 +8,7 @@ import jwt from 'jsonwebtoken';
 import { User } from '@/models';
 
 // Use an environment variable for the JWT secret
-const JWT_SECRET = process.env.JWT_SECRET || 'your_default_jwt_secret';
+const JWT_SECRET = process.env.JWT_SECRET || '0216cd9396619f3abfcec489fe0697d9ce6ec029543998da9b47cb3ebd5e5444bf9d601dea2be92c858c8bc7d21f4fdd82074df0e3a0d81b9bb468286e7dbfe8';
 
 export async function POST(request: NextRequest) {
   // Parse JSON from the request

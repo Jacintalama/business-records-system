@@ -2,122 +2,269 @@
 
 import React, { useState, useEffect } from "react";
 import NavBar from "../components/NavBar";
-import { Bar } from "react-chartjs-2"; 
+import Topbar from "../components/Topbar";
+import { Pie } from "react-chartjs-2";
 import {
   Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
+  ArcElement,
   Tooltip,
   Legend,
+  Title,
 } from "chart.js";
+import ChartDataLabels from "chartjs-plugin-datalabels";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
-// Register Chart.js components
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+// Register Chart.js components required for Pie chart including DataLabels plugin
+ChartJS.register(ArcElement, Tooltip, Legend, Title, ChartDataLabels);
 
-// Example barangays. Use your real list here.
 const barangays = [
-  "Malbang", "Nomoh", "Seven Hills", "Pananag", "Daliao", "Colon",
-  "Amsipit", "Bales", "Kamanga", "Kablacan", "Kanalo",
-  "Lumatil", "Lumasal", "Tinoto", "Public Market", "Poblacion", "Kabatiol",
+  "Overall",
+  "Amsipit",
+  "Bales",
+  "Colon",
+  "Daliao",
+  "Kabatiol",
+  "Kablacan",
+  "Kamanga",
+  "Kanalo",
+  "Lumatil",
+  "Lumasal",
+  "Malbang",
+  "Nomoh",
+  "Pananag",
+  "Poblacion",
+  "Public Market",
+  "Seven Hills",
+  "Tinoto",
 ];
 
-// Example years to filter. You can expand or change dynamically.
-const years = [2023, 2024, 2025];
+const generateYears = (startYear = 2000, extraYears = 10): number[] => {
+  const currentYear = new Date().getFullYear();
+  const endYear = currentYear + extraYears;
+  const years: number[] = [];
+  for (let year = startYear; year <= endYear; year++) {
+    years.push(year);
+  }
+  return years;
+};
+
+const years = generateYears();
 
 export default function BusinessReportsPage() {
-  const [selectedYear, setSelectedYear] = useState<number>(2024);
-  const [selectedBarangay, setSelectedBarangay] = useState<string>("Colon");
+  const router = useRouter();
 
-  // Example data structure: for demonstration only
-  const [reportData, setReportData] = useState<{
-    businessTax: { renewal: number; new: number; total: number };
-    pumpboat: number;
-    tricycle: number;
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [userName, setUserName] = useState("User");
+
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const res = await fetch("http://192.168.1.107:3000/api/auth/me", {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setIsAuthenticated(true);
+          setUserName(`${data.firstName} ${data.lastName}`);
+        } else {
+          setIsAuthenticated(false);
+          router.push("/auth/login");
+        }
+      } catch (error) {
+        console.error("Auth check error:", error);
+        setIsAuthenticated(false);
+        router.push("/auth/login");
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+    checkAuth();
+  }, [router]);
+
+  // Filters
+  const [selectedYear, setSelectedYear] = useState<number>(
+    new Date().getFullYear()
+  );
+  const [selectedBarangay, setSelectedBarangay] = useState<string>("Overall");
+  // Delinquency filter state (this flag now only affects table rows, not chart data)
+  const [onlyDelinquent, setOnlyDelinquent] = useState<boolean>(false);
+
+  // Report data states
+  const [overallReportData, setOverallReportData] = useState<{
+    businessTax: { new: number; renew: number; total: number };
+  } | null>(null);
+  const [delinquentReportData, setDelinquentReportData] = useState<{
+    businessTax: { new: number; renew: number; total: number };
   } | null>(null);
 
-  // Example: fetch or compute your real data when either filter changes
+  // Fetch both overall and delinquent data (with aggregation if "Overall" is selected)
   useEffect(() => {
-    // TODO: Replace with your actual fetch from a real API endpoint
-    // This is a dummy example that returns static data
-    // based on the year + barangay. You can adapt it to your needs.
     async function fetchReports() {
-      // Simulate an API call (replace with real API endpoint):
-      const mockResponse = await new Promise((resolve) => {
-        setTimeout(() => {
-          // For demonstration, we just return some arbitrary numbers
-          // that differ by year or barangay:
-          const multiplier = selectedYear === 2024 ? 1 : 1.2;
-          resolve({
-            businessTax: {
-              renewal: Math.floor(600 * multiplier),
-              new: Math.floor(113 * multiplier),
-              total: Math.floor(713 * multiplier),
-            },
-            pumpboat: Math.floor(631 * multiplier),
-            tricycle: Math.floor(517 * multiplier),
+      try {
+        if (selectedBarangay === "Overall") {
+          // Exclude "Overall" from aggregation.
+          const individualBarangays = barangays.filter((b) => b !== "Overall");
+
+          // Fetch overall data for each barangay
+          const overallPromises = individualBarangays.map((b) => {
+            const url = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(b)}`;
+            return fetch(url, { credentials: "include" }).then(async (response) => {
+              if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Failed to fetch report for ${b}:`, response.status, errorText);
+                throw new Error(`Failed to fetch report for ${b}`);
+              }
+              return response.json();
+            });
           });
-        }, 500);
-      });
+          const overallResults = await Promise.all(overallPromises);
+          let overallNew = 0,
+            overallRenew = 0;
+          overallResults.forEach((result) => {
+            overallNew += result.businessTax?.new || 0;
+            overallRenew += result.businessTax?.renew || 0;
+          });
+          setOverallReportData({
+            businessTax: { new: overallNew, renew: overallRenew, total: overallNew + overallRenew },
+          });
 
-      setReportData(mockResponse as any);
+          // Fetch delinquent data for each barangay
+          const delinquentPromises = individualBarangays.map((b) => {
+            const url = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(b)}&delinquent=true`;
+            return fetch(url, { credentials: "include" }).then(async (response) => {
+              if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Failed to fetch delinquent report for ${b}:`, response.status, errorText);
+                throw new Error(`Failed to fetch delinquent report for ${b}`);
+              }
+              return response.json();
+            });
+          });
+          const delinquentResults = await Promise.all(delinquentPromises);
+          let delinquentNew = 0,
+            delinquentRenew = 0;
+          delinquentResults.forEach((result) => {
+            delinquentNew += result.businessTax?.new || 0;
+            delinquentRenew += result.businessTax?.renew || 0;
+          });
+          setDelinquentReportData({
+            businessTax: { new: delinquentNew, renew: delinquentRenew, total: delinquentNew + delinquentRenew },
+          });
+        } else {
+          // Fetch for a specific barangay.
+          const baseUrl = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(selectedBarangay)}`;
+          const overallRes = await fetch(baseUrl, { credentials: "include" });
+          if (!overallRes.ok) {
+            const errorText = await overallRes.text();
+            console.error("Failed to fetch overall report:", overallRes.status, errorText);
+            throw new Error(`Failed to fetch overall report: ${overallRes.statusText}`);
+          }
+          const overallData = await overallRes.json();
+          const overallNew = overallData.businessTax?.new || 0;
+          const overallRenew = overallData.businessTax?.renew || 0;
+          setOverallReportData({
+            businessTax: { new: overallNew, renew: overallRenew, total: overallNew + overallRenew },
+          });
+
+          const delinquentRes = await fetch(baseUrl + "&delinquent=true", {
+            credentials: "include",
+          });
+          if (!delinquentRes.ok) {
+            const errorText = await delinquentRes.text();
+            console.error("Failed to fetch delinquent report:", delinquentRes.status, errorText);
+            throw new Error(`Failed to fetch delinquent report: ${delinquentRes.statusText}`);
+          }
+          const delinquentData = await delinquentRes.json();
+          const delinquentNew = delinquentData.businessTax?.new || 0;
+          const delinquentRenew = delinquentData.businessTax?.renew || 0;
+          setDelinquentReportData({
+            businessTax: { new: delinquentNew, renew: delinquentRenew, total: delinquentNew + delinquentRenew },
+          });
+        }
+      } catch (error) {
+        console.error("Error in fetchReports:", error);
+      }
     }
-
     fetchReports();
   }, [selectedYear, selectedBarangay]);
 
-  // Prepare data for the chart (example with two years).
-  // In a real scenario, you might fetch an array of years at once,
-  // or let the user compare multiple years. This is just a demonstration.
+  // Pie Chart Data: Use the same labels and dataset values.
   const chartData = {
-    labels: ["Business Tax (Total)", "Pumpboat", "Tricycle"],
+    labels: ["New", "Renew", "Delinquent"],
     datasets: [
       {
         label: `Year ${selectedYear}`,
-        data: reportData
-          ? [
-              reportData.businessTax.total,
-              reportData.pumpboat,
-              reportData.tricycle,
-            ]
-          : [0, 0, 0],
-        backgroundColor: "rgba(54, 162, 235, 0.6)",
+        data: [
+          overallReportData ? overallReportData.businessTax.new : 0,
+          overallReportData ? overallReportData.businessTax.renew : 0,
+          delinquentReportData ? delinquentReportData.businessTax.total : 0,
+        ],
+        backgroundColor: [
+          "rgb(54, 162, 235)", // Blue for New
+          "rgb(75, 192, 192)", // Teal for Renew
+          "rgb(255, 99, 132)", // Red for Delinquent
+        ],
       },
     ],
   };
 
+  // Pie chart options with datalabels plugin to show numbers on each slice.
   const chartOptions = {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: {
       title: {
         display: true,
-        text: `Tax Payers Report - Year ${selectedYear} - Brgy. ${selectedBarangay}`,
+        text:
+          selectedBarangay === "Overall"
+            ? `Overall Business Tax Report - ${selectedYear}`
+            : `Business Tax Report - ${selectedYear} - Brgy. ${selectedBarangay}`,
       },
       legend: {
         display: true,
       },
+      datalabels: {
+        color: "#fff",
+        formatter: (value: number) => value,
+        font: {
+          weight: "bold" as "bold", // explicitly cast to a literal type
+          size: 14,
+        },
+      },
     },
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
+      <Topbar />
       <NavBar />
-      <div className="mb-6">
-                  <Link
-                    href="/"
-                    className="inline-flex items-center bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-700 transition duration-200 ease-in-out"
-                  >
-                    &larr; Back to Dashboard
-                  </Link>
-                </div>
+      <div className="mt-8 mb-6">
+        <Link
+          href="/"
+          className="inline-flex items-center bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-700 transition duration-200 ease-in-out"
+        >
+          &larr; Back to Dashboard
+        </Link>
+      </div>
       <main className="max-w-6xl mx-auto px-4 py-8">
         <header className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800">
-            Business Reports
+            Registered Tax Payers
           </h1>
-          <p className="text-gray-600">Municipality of Maasim, Sarangani</p>
+          <p className="text-gray-600">
+            Municipality of Maasim, Sarangani
+          </p>
         </header>
 
         {/* Filter Section */}
@@ -139,7 +286,6 @@ export default function BusinessReportsPage() {
               ))}
             </select>
           </div>
-
           {/* Barangay Dropdown */}
           <div>
             <label className="block text-lg font-medium text-gray-700 mb-2">
@@ -159,61 +305,82 @@ export default function BusinessReportsPage() {
           </div>
         </div>
 
-        {/* Chart Section */}
-        <div className="bg-white rounded shadow p-6 mb-8">
-          <Bar data={chartData} options={chartOptions} />
+        {/* Chart Section: Pie Chart */}
+        <div className="bg-white rounded shadow p-6 mb-8" style={{ height: "300px" }}>
+          <Pie data={chartData} options={chartOptions} />
         </div>
 
-        {/* Table Section (based on your whiteboard example) */}
-        <div className="overflow-x-auto bg-white rounded shadow p-6">
+        {/* Overall Business Tax Data Table */}
+        <div className="overflow-x-auto bg-white rounded shadow p-6 mb-8">
           <h2 className="text-xl font-semibold text-gray-700 mb-4">
-            Detailed Tax Payers Data
+            Overall Business Tax Data
           </h2>
-
-          {!reportData ? (
-            <p>Loading data...</p>
-          ) : (
-            <table className="w-full table-auto border-collapse">
+          {overallReportData ? (
+            <table className="table-fixed w-full border-collapse">
               <thead className="bg-gray-100 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                  <th className="w-1/5 px-4 py-3 text-left text-sm font-semibold text-gray-700">
                     Category
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                    Renewal
+                  <th className="w-1/5 px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Year
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                  <th className="w-1/5 px-4 py-3 text-left text-sm font-semibold text-gray-700">
                     New
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                  <th className="w-1/5 px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Renew
+                  </th>
+                  <th className="w-1/5 px-4 py-3 text-left text-sm font-semibold text-gray-700">
                     Total
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {/* Business Tax row */}
                 <tr className="border-b border-gray-200">
-                  <td className="px-4 py-3">Business Tax</td>
-                  <td className="px-4 py-3">{reportData.businessTax.renewal}</td>
-                  <td className="px-4 py-3">{reportData.businessTax.new}</td>
-                  <td className="px-4 py-3">{reportData.businessTax.total}</td>
-                </tr>
-                {/* Pumpboat row (no renewal/new breakdown in your example, so we just display total) */}
-                <tr className="border-b border-gray-200">
-                  <td className="px-4 py-3">Pumpboat</td>
-                  <td className="px-4 py-3">—</td>
-                  <td className="px-4 py-3">—</td>
-                  <td className="px-4 py-3">{reportData.pumpboat}</td>
-                </tr>
-                {/* Tricycle row */}
-                <tr>
-                  <td className="px-4 py-3">Tricycle</td>
-                  <td className="px-4 py-3">—</td>
-                  <td className="px-4 py-3">—</td>
-                  <td className="px-4 py-3">{reportData.tricycle}</td>
+                  <td className="px-4 py-3">Overall Business Tax</td>
+                  <td className="px-4 py-3">{selectedYear}</td>
+                  <td className="px-4 py-3">{overallReportData.businessTax.new}</td>
+                  <td className="px-4 py-3">{overallReportData.businessTax.renew}</td>
+                  <td className="px-4 py-3">{overallReportData.businessTax.total}</td>
                 </tr>
               </tbody>
             </table>
+          ) : (
+            <p>Loading Overall data...</p>
+          )}
+        </div>
+
+        {/* Delinquent Business Tax Data Table */}
+        <div className="overflow-x-auto bg-white rounded shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-700 mb-4">
+            Delinquent Business Tax Data
+          </h2>
+          {delinquentReportData ? (
+            <table className="table-fixed w-full border-collapse">
+              <thead className="bg-gray-100 border-b border-gray-200">
+                <tr>
+                  <th className="w-1/3 px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Category
+                  </th>
+                  <th className="w-1/3 px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Year
+                  </th>
+                  <th className="w-1/3 px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Total
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-gray-200">
+                  <td className="px-4 py-3">Delinquent Business Tax</td>
+                  <td className="px-4 py-3">{selectedYear}</td>
+                  <td className="px-4 py-3">{delinquentReportData.businessTax.total}</td>
+                </tr>
+              </tbody>
+            </table>
+          ) : (
+            <p>Loading Delinquent data...</p>
           )}
         </div>
       </main>

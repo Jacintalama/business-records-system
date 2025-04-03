@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-:root {
+/* :root {
   --background: #ffffff;
   --foreground: #171717;
 }
@@ -17,11 +17,35 @@
     --background: #0a0a0a;
     --foreground: #ededed;
   }
-}
+} */
 
-body {
+/* body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
-}
+} */
 
+@media print {
+  @page {
+    size: A4 landscape; /* Forces A4 in landscape */
+    margin: 0.5cm;      /* Adjust margins as needed */
+  }
+  body {
+    -webkit-print-color-adjust: exact;
+  }
+  /* Hide all non-print elements (using a helper class) */
+  .no-print,
+  .top-bar {
+    display: none !important;
+  }
+  /* Optional: scale content to fit one page if needed */
+  .print-container {
+    width: 100%;
+    transform: scale(0.9); /* Adjust scale as necessary */
+    transform-origin: top left;
+  }
+  /* Prevent table rows from breaking mid-row */
+  table {
+    page-break-inside: avoid;
+  }
+}

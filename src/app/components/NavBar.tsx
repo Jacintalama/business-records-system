@@ -18,8 +18,8 @@ export default function NavBar() {
             className="object-contain"
           />
           <div>
-            <h2 className="text-xl font-bold">Business Records</h2>
-            <p className="text-sm">Municipality of Maasim, Sarangani</p>
+            <h2 className="text-2xl font-bold">BUSINESS RECORDS </h2>
+            <p className="text-xl">Municipality of Maasim, Sarangani</p>
           </div>
         </div>
 

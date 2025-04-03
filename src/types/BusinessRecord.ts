@@ -23,8 +23,10 @@ export interface BusinessRecord {
   docTax: number;
   eggsFee: number;
   market: number;
+  marketCertification: string; // new field
   surcharge25: number;
-  surcharge5: number;
+  sucharge2: number; // renamed from surcharge5
+  miscellaneous: string; // new field
   totalPayment: number;
   remarks: string;
 }

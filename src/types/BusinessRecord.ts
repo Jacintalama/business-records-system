@@ -15,6 +15,9 @@ export interface BusinessRecord {
   policeClearance: number;
   taxClearance: number;
   garbage: number;
+  garbageCollection: string; // new field
+  polluters: string;         // new field
+  Occupation: string;        // new field
   verification: number;
   weightAndMass: number;
   healthClearance: number;
@@ -22,11 +25,12 @@ export interface BusinessRecord {
   menro: number;
   docTax: number;
   eggsFee: number;
-  market: number;
   marketCertification: string; // new field
   surcharge25: number;
   sucharge2: number; // renamed from surcharge5
   miscellaneous: string; // new field
   totalPayment: number;
   remarks: string;
+  frequency: 'quarterly' | 'semi-annual' | 'annual'; // new field for renewal frequency
+  renewed: boolean; // new field to indicate if the record has been renewed
 }

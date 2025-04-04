@@ -11,8 +11,9 @@ import NavBar from "../components/NavBar";
 import BusinessRecordForm from "../components/BusinessRecordForm";
 import { BusinessRecord } from "@/types/BusinessRecord";
 import Topbar from "../components/Topbar";
+import { isRecordDelinquentExact } from "../utils/periodUtils";
 
-// Update the interface to include the record year.
+// Updated interface including "renewed" flag
 interface ApplicantDisplay {
   id: string;
   applicantName: string;
@@ -21,6 +22,9 @@ interface ApplicantDisplay {
   capitalInvestment: number;
   recordId?: string;
   year: number;
+  date: string;
+  frequency: "quarterly" | "semi-annual" | "annual";
+  renewed: boolean;
 }
 
 const barangays = [
@@ -53,9 +57,9 @@ export default function BusinessRecordsPage() {
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
-  const [userName, setUserName] = useState<string>('User');
+  const [userName, setUserName] = useState<string>("User");
 
-  // Check if the user is authenticated
+  // Check authentication
   useEffect(() => {
     async function checkAuth() {
       try {
@@ -65,8 +69,7 @@ export default function BusinessRecordsPage() {
         if (res.ok) {
           const data = await res.json();
           setIsAuthenticated(true);
-          const fullName = `${data.firstName} ${data.lastName}`;
-          setUserName(fullName);
+          setUserName(`${data.firstName} ${data.lastName}`);
         } else {
           setIsAuthenticated(false);
         }
@@ -87,7 +90,7 @@ export default function BusinessRecordsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBusinessName, setSelectedBusinessName] = useState<string>("all");
 
-  // New state for delinquency filter
+  // Delinquency filter state
   const [onlyDelinquent, setOnlyDelinquent] = useState<boolean>(false);
 
   // Modal state
@@ -101,6 +104,7 @@ export default function BusinessRecordsPage() {
     setHydrated(true);
   }, []);
 
+  // Refresh data on page show, popstate, or visibility change
   useEffect(() => {
     const handlePageShow = () => {
       fetchApplicants(selectedBarangay);
@@ -134,17 +138,19 @@ export default function BusinessRecordsPage() {
         fetchApplicants(selectedBarangay);
       }
     };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [selectedBarangay]);
 
-  // Fetch applicants – now including "year" from record if available.
+  // Fetch applicants including year, date, frequency, and renewed flag
   const fetchApplicants = async (barangay: string) => {
     setIsLoading(true);
     try {
-      const url = `http://192.168.1.107:3000/api/business-record?barangay=${encodeURIComponent(barangay)}`;
+      const url = `http://192.168.1.107:3000/api/business-record?barangay=${encodeURIComponent(
+        barangay
+      )}`;
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) {
         if (res.status === 401) {
@@ -166,18 +172,28 @@ export default function BusinessRecordsPage() {
             capitalInvestment: Number(rec.applicant.capitalInvestment),
             recordId: String(rec.id),
             year: rec.year ? Number(rec.year) : new Date().getFullYear(),
+            // Expecting date in "DD/MM/YYYY" format
+            date: rec.date ? rec.date : new Date().toISOString(),
+            frequency: rec.frequency || "annual",
+            renewed: rec.renewed || false,
           };
         })
         .filter(Boolean) as ApplicantDisplay[];
 
-      // De-duplicate by applicant ID, keeping the record with the highest (most recent) year
+      // De-duplicate by applicant ID, keeping the record with the highest year
       const uniqueMap: Record<string, ApplicantDisplay> = {};
       allApplicants.forEach((a) => {
         if (!uniqueMap[a.id] || a.year > uniqueMap[a.id].year) {
           uniqueMap[a.id] = a;
         }
       });
-      const uniqueApplicants = Object.values(uniqueMap);
+      let uniqueApplicants = Object.values(uniqueMap);
+
+      // Apply delinquency filter if needed using isRecordDelinquentExact from periodUtils
+      if (onlyDelinquent) {
+        uniqueApplicants = uniqueApplicants.filter((a) => isRecordDelinquentExact(a));
+      }
+
       setApplicants(uniqueApplicants);
     } catch (error) {
       console.error("Error fetching applicants:", error);
@@ -190,14 +206,14 @@ export default function BusinessRecordsPage() {
 
   useEffect(() => {
     fetchApplicants(selectedBarangay);
-  }, [selectedBarangay]);
+  }, [selectedBarangay, onlyDelinquent]);
 
   // Filter data based on search query
   const filteredApplicants = applicants.filter((a) =>
     `${a.applicantName} ${a.businessName}`.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Prepare business name options for the Select component
+  // Prepare business name options for react-select
   const uniqueBusinessNames = Array.from(
     new Set(filteredApplicants.map((a) => a.businessName.toLowerCase()))
   );
@@ -209,30 +225,29 @@ export default function BusinessRecordsPage() {
     })),
   ];
 
-  // Final filtered applicants list:
+  // Final filtered list
   let finalApplicants =
     selectedBusinessName === "all"
       ? filteredApplicants
-      : filteredApplicants.filter((a) => a.businessName.toLowerCase() === selectedBusinessName);
+      : filteredApplicants.filter(
+          (a) => a.businessName.toLowerCase() === selectedBusinessName
+        );
 
-  // Filter for delinquent records (year less than current year)
-  const currentYear = new Date().getFullYear();
-  if (onlyDelinquent) {
-    finalApplicants = finalApplicants.filter((a) => a.year < currentYear);
-  }
-
-  // Pagination state and logic
+  // Pagination logic
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
   const totalPages = Math.ceil(finalApplicants.length / itemsPerPage);
   const indexOfLastApplicant = currentPage * itemsPerPage;
   const indexOfFirstApplicant = indexOfLastApplicant - itemsPerPage;
-  const paginatedApplicants = finalApplicants.slice(indexOfFirstApplicant, indexOfLastApplicant);
+  const paginatedApplicants = finalApplicants.slice(
+    indexOfFirstApplicant,
+    indexOfLastApplicant
+  );
 
   // State for selected applicants (IDs)
   const [selectedApplicants, setSelectedApplicants] = useState<string[]>([]);
 
-  // Handle select all for current page
+  // Handle select all
   const handleSelectAllChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
       const newSelections = paginatedApplicants.map((a) => a.id);
@@ -246,7 +261,7 @@ export default function BusinessRecordsPage() {
     }
   };
 
-  // Handle individual row checkbox changes
+  // Handle individual selection
   const handleSelectOneChange = (id: string, checked: boolean) => {
     if (checked) {
       setSelectedApplicants((prev) => [...prev, id]);
@@ -288,7 +303,6 @@ export default function BusinessRecordsPage() {
       const data = await res.json();
       let fullRecord: Partial<BusinessRecord>;
       const records = data.records || [];
-
       if (records.length > 0) {
         const rec = records[0];
         fullRecord = {
@@ -297,6 +311,11 @@ export default function BusinessRecordsPage() {
           applicantAddress: rec.applicant.applicantAddress,
           businessName: rec.applicant.businessName,
           capitalInvestment: rec.applicant.capitalInvestment?.toString() || "0",
+          year: rec.year,
+          date: rec.date,
+          frequency: rec.frequency,
+          renewed: rec.renewed,
+          // ...include other fields as needed
         };
       } else if (data.applicant) {
         fullRecord = {
@@ -481,62 +500,67 @@ export default function BusinessRecordsPage() {
                   </td>
                 </tr>
               ) : (
-                paginatedApplicants.map((applicant) => (
-                  <tr
-                    key={applicant.id}
-                    className={`border-b hover:bg-gray-50 ${applicant.year < currentYear ? "bg-red-300" : "bg-white"}`}
-                  >
-                    <td className="w-12 p-4">
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm"
-                          checked={selectedApplicants.includes(applicant.id)}
-                          onChange={(e) =>
-                            handleSelectOneChange(applicant.id, e.target.checked)
-                          }
-                        />
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-medium text-gray-900">
-                      {applicant.applicantName}
-                    </td>
-                    <td className="px-6 py-4">{applicant.businessName}</td>
-                    <td className="px-6 py-4">
-                      ₱{applicant.capitalInvestment.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4">{applicant.year}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-2">
-                        <Link
-                          href={`/records?applicantId=${applicant.id}&barangay=${encodeURIComponent(
-                            selectedBarangay
-                          )}&applicantName=${encodeURIComponent(
-                            applicant.applicantName
-                          )}&applicantAddress=${encodeURIComponent(
-                            applicant.applicantAddress
-                          )}`}
-                          className="no-underline hover:no-underline inline-flex items-center bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-500 transition-colors"
-                        >
-                          <FaEye className="mr-1" /> View
-                        </Link>
-
-                        <button
-                          onClick={() => openEditModal(applicant)}
-                          className="inline-flex items-center bg-yellow-500 text-white py-1 px-3 rounded hover:bg-yellow-400 transition-colors"
-                        >
-                          <FaEdit className="mr-1" /> Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteApplicant(applicant.id)}
-                          className="inline-flex items-center bg-red-600 text-white py-1 px-3 rounded hover:bg-red-500 transition-colors"
-                        >
-                          <FaTrash className="mr-1" /> Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                paginatedApplicants.map((applicant) => {
+                  // Use the new exact delinquency check
+                  const isDelinquent = isRecordDelinquentExact(applicant);
+                  return (
+                    <tr
+                      key={applicant.id}
+                      className={`border-b hover:bg-gray-50 ${
+                        isDelinquent ? "bg-red-300" : "bg-white"
+                      }`}
+                    >
+                      <td className="w-12 p-4">
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm"
+                            checked={selectedApplicants.includes(applicant.id)}
+                            onChange={(e) =>
+                              handleSelectOneChange(applicant.id, e.target.checked)
+                            }
+                          />
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-gray-900">
+                        {applicant.applicantName}
+                      </td>
+                      <td className="px-6 py-4">{applicant.businessName}</td>
+                      <td className="px-6 py-4">
+                        ₱{applicant.capitalInvestment.toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4">{applicant.year}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center space-x-2">
+                          <Link
+                            href={`/records?applicantId=${applicant.id}&barangay=${encodeURIComponent(
+                              selectedBarangay
+                            )}&applicantName=${encodeURIComponent(
+                              applicant.applicantName
+                            )}&applicantAddress=${encodeURIComponent(
+                              applicant.applicantAddress
+                            )}`}
+                            className="no-underline hover:no-underline inline-flex items-center bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-500 transition-colors"
+                          >
+                            <FaEye className="mr-1" /> View
+                          </Link>
+                          <button
+                            onClick={() => openEditModal(applicant)}
+                            className="inline-flex items-center bg-yellow-500 text-white py-1 px-3 rounded hover:bg-yellow-400 transition-colors"
+                          >
+                            <FaEdit className="mr-1" /> Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteApplicant(applicant.id)}
+                            className="inline-flex items-center bg-red-600 text-white py-1 px-3 rounded hover:bg-red-500 transition-colors"
+                          >
+                            <FaTrash className="mr-1" /> Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

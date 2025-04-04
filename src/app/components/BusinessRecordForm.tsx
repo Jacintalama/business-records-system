@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 import { toast } from 'react-toastify';
@@ -13,6 +13,18 @@ interface BusinessRecordFormProps {
   initialBusinessName?: string;
 }
 
+// Helper function: Convert a date string from "DD/MM/YYYY" to "YYYY-MM-DD"
+// If the string already contains a dash, assume it's in the proper format.
+const parseDate = (dateStr: string): string => {
+  if (dateStr.includes('-')) return dateStr;
+  const parts = dateStr.split('/');
+  if (parts.length !== 3) return '';
+  const [day, month, year] = parts;
+  // Create a new Date object then convert to ISO string and split out date part
+  const d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+  return d.toISOString().split('T')[0];
+};
+
 const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
   onSubmitSuccess,
   record,
@@ -21,11 +33,65 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
   initialApplicantAddress = '',
   initialBusinessName = '',
 }) => {
-  // In edit mode, only show the basic applicant fields.
-  const editFields = ['applicantName', 'applicantAddress', 'businessName', 'capitalInvestment'];
+  // Define field groups as arrays of field objects.
+  const applicantGroup = [
+    { label: 'Applicant Name', name: 'applicantName', type: 'text' },
+    { label: 'Applicant Address', name: 'applicantAddress', type: 'text' },
+    { label: 'Business Name', name: 'businessName', type: 'text' },
+    { label: 'Capital Investment', name: 'capitalInvestment', type: 'number' },
+  ];
 
-  // Build the complete initial state.
-  // When in create mode, all fields are included and grouped.
+  // For both create and edit, include renewal frequency.
+  const renewalFrequencyGroup = [
+    { label: 'Renewal Frequency', name: 'frequency', type: 'select' },
+  ];
+
+  // For edit mode, we also show a checkbox for renewed status.
+  const renewedField = { label: 'Renewed', name: 'renewed', type: 'checkbox' };
+
+  const recordGroup = [
+    { label: 'Year', name: 'year', type: 'number' },
+    { label: 'Date', name: 'date', type: 'date' },
+    { label: 'Gross', name: 'gross', type: 'text' },
+    { label: 'OR No.', name: 'orNo', type: 'text' },
+  ];
+
+  const feesGroup = [
+    { label: 'BUS TAX', name: 'busTax', type: 'text' },
+    { label: "Mayor's Permit", name: 'mayorsPermit', type: 'text' },
+    { label: 'Sanitary Inps', name: 'sanitaryInps', type: 'text' },
+    { label: 'Police Clearance', name: 'policeClearance', type: 'text' },
+    { label: 'Tax Clearance', name: 'taxClearance', type: 'text' },
+    { label: 'Garbage', name: 'garbage', type: 'text' },
+    { label: 'Verification', name: 'verification', type: 'text' },
+    { label: 'Weight & Mass', name: 'weightAndMass', type: 'text' },
+    { label: 'Health Clearance', name: 'healthClearance', type: 'text' },
+    { label: 'SEC Fee', name: 'secFee', type: 'text' },
+    { label: 'MENRO', name: 'menro', type: 'text' },
+    { label: 'Doc Tax', name: 'docTax', type: 'text' },
+    { label: "Egg's Fee", name: 'eggsFee', type: 'text' },
+    { label: 'Market Certification', name: 'marketCertification', type: 'text' },
+  ];
+
+  // Define additionalGroup to avoid error (feel free to update as needed)
+  const additionalGroup = [
+    { label: 'Garbage Collection', name: 'garbageCollection', type: 'text' },
+    { label: 'Polluters', name: 'polluters', type: 'text' },
+    { label: 'Occupation', name: 'Occupation', type: 'text' },
+  ];
+
+  const surchargesGroup = [
+    { label: '25% Surcharge', name: 'surcharge25', type: 'text' },
+    { label: '2% Month', name: 'sucharge2', type: 'text' },
+  ];
+
+  const totalsGroup = [
+    { label: 'Total Payment', name: 'totalPayment', type: 'text' },
+    { label: 'Remarks', name: 'remarks', type: 'text' },
+    { label: 'Miscellaneous', name: 'miscellaneous', type: 'text' },
+  ];
+
+  // Build the initial state. In edit mode, we include renewal frequency and renewed.
   const getInitialState = (): Record<string, string> => {
     const rec = record || {};
     if (mode === 'edit') {
@@ -47,6 +113,13 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
           : rec.applicant && (rec as any).applicant.capitalInvestment
           ? String((rec as any).applicant.capitalInvestment)
           : '',
+        frequency: rec.frequency ? String(rec.frequency) : 'annual',
+        renewed: rec.renewed ? String(rec.renewed) : 'false',
+        // Convert the stored date using parseDate so the input displays properly
+        date: rec.date ? parseDate(rec.date as string) : '',
+        gross: rec.gross ? String(rec.gross) : '',
+        orNo: rec.orNo || '',
+        // Other fields will be added when needed
       };
     }
     return {
@@ -68,7 +141,7 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
         ? String((rec as any).applicant.capitalInvestment)
         : '',
       year: rec.year ? String(rec.year) : '',
-      date: rec.date ? new Date(rec.date as string).toISOString().split('T')[0] : '',
+      date: rec.date ? parseDate(rec.date as string) : '',
       gross: rec.gross ? String(rec.gross) : '',
       orNo: rec.orNo || '',
       busTax: rec.busTax ? String(rec.busTax) : '',
@@ -77,6 +150,9 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
       policeClearance: rec.policeClearance ? String(rec.policeClearance) : '',
       taxClearance: rec.taxClearance ? String(rec.taxClearance) : '',
       garbage: rec.garbage ? String(rec.garbage) : '',
+      garbageCollection: rec.garbageCollection ? String(rec.garbageCollection) : '',
+      polluters: rec.polluters ? String(rec.polluters) : '',
+      Occupation: rec.Occupation ? String(rec.Occupation) : '',
       verification: rec.verification ? String(rec.verification) : '',
       weightAndMass: rec.weightAndMass ? String(rec.weightAndMass) : '',
       healthClearance: rec.healthClearance ? String(rec.healthClearance) : '',
@@ -84,26 +160,36 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
       menro: rec.menro ? String(rec.menro) : '',
       docTax: rec.docTax ? String(rec.docTax) : '',
       eggsFee: rec.eggsFee ? String(rec.eggsFee) : '',
-      market: rec.market ? String(rec.market) : '',
       marketCertification: rec.marketCertification ? String(rec.marketCertification) : '',
       surcharge25: rec.surcharge25 ? String(rec.surcharge25) : '',
-      sucharge2: rec.sucharge2 ? String(rec.sucharge2) : '', // renamed field
+      sucharge2: rec.sucharge2 ? String(rec.sucharge2) : '',
       miscellaneous: rec.miscellaneous ? String(rec.miscellaneous) : '',
       totalPayment: rec.totalPayment ? String(rec.totalPayment) : '',
       remarks: rec.remarks || '',
+      frequency: rec.frequency ? String(rec.frequency) : 'annual',
+      renewed: rec.renewed ? String(rec.renewed) : 'false',
     };
   };
 
   const [formData, setFormData] = useState<Record<string, string>>(getInitialState());
   const [submitting, setSubmitting] = useState(false);
 
-  // Update formData if the record prop changes.
+  // Update formData if record prop changes.
   useEffect(() => {
     setFormData(getInitialState());
   }, [record]);
 
-  const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
+    const target = e.target;
+    let value: string;
+    if ('checked' in target && target.type === "checkbox") {
+      value = target.checked ? "true" : "false";
+    } else {
+      value = target.value;
+    }
+    setFormData((prev) => ({ ...prev, [target.name]: value }));
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -111,11 +197,10 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
     if (submitting) return;
     setSubmitting(true);
 
-    // Validate required fields.
     const requiredFields =
       mode === 'edit'
-        ? ['applicantName', 'applicantAddress', 'businessName', 'capitalInvestment']
-        : ['applicantName', 'applicantAddress', 'businessName', 'year', 'date'];
+        ? ['applicantName', 'applicantAddress', 'businessName', 'capitalInvestment', 'frequency']
+        : ['applicantName', 'applicantAddress', 'businessName', 'year', 'date', 'frequency'];
     const emptyField = requiredFields.find((field) => !formData[field]?.trim());
     if (emptyField) {
       toast.warning(`Please fill out the ${emptyField} field.`);
@@ -123,11 +208,11 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
       return;
     }
 
-    // Convert fields that need to be numeric.
     const preparedData = {
       ...formData,
       capitalInvestment: formData.capitalInvestment ? parseInt(formData.capitalInvestment, 10) : 0,
       ...(mode !== 'edit' && { year: formData.year ? parseInt(formData.year, 10) : 0 }),
+      renewed: formData.renewed === "true",
     };
 
     try {
@@ -165,99 +250,62 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
     setSubmitting(false);
   };
 
-  // Define field groups for clarity.
-  const applicantGroup = [
-    { label: 'Applicant Name', name: 'applicantName', type: 'text' },
-    { label: 'Applicant Address', name: 'applicantAddress', type: 'text' },
-    { label: 'Business Name', name: 'businessName', type: 'text' },
-    { label: 'Capital Investment', name: 'capitalInvestment', type: 'number' },
-  ];
-
-  const recordGroup = [
-    { label: 'Year', name: 'year', type: 'number' },
-    { label: 'Date', name: 'date', type: 'date' },
-    { label: 'Gross', name: 'gross', type: 'text' },
-    { label: 'OR No.', name: 'orNo', type: 'text' },
-  ];
-
-  const feesGroup = [
-    { label: 'BUS TAX', name: 'busTax', type: 'text' },
-    { label: "Mayor's Permit", name: 'mayorsPermit', type: 'text' },
-    { label: 'Sanitary Inps', name: 'sanitaryInps', type: 'text' },
-    { label: 'Police Clearance', name: 'policeClearance', type: 'text' },
-    { label: 'Tax Clearance', name: 'taxClearance', type: 'text' },
-    { label: 'Garbage', name: 'garbage', type: 'text' },
-    { label: 'Verification', name: 'verification', type: 'text' },
-    { label: 'Weight & Mass', name: 'weightAndMass', type: 'text' },
-    { label: 'Health Clearance', name: 'healthClearance', type: 'text' },
-    { label: 'SEC Fee', name: 'secFee', type: 'text' },
-    { label: 'MENRO', name: 'menro', type: 'text' },
-    { label: 'Doc Tax', name: 'docTax', type: 'text' },
-    { label: "Egg's Fee", name: 'eggsFee', type: 'text' },
-    { label: 'Market', name: 'market', type: 'text' },
-    { label: 'Market Certification', name: 'marketCertification', type: 'text' },
-  ];
-
-  const surchargesGroup = [
-    { label: '25% Surcharge', name: 'surcharge25', type: 'text' },
-    { label: '2% Month', name: 'sucharge2', type: 'text' },
-  ];
-
-  const totalsGroup = [
-    { label: 'Total Payment', name: 'totalPayment', type: 'text' },
-    { label: 'Remarks', name: 'remarks', type: 'text' },
-    { label: 'Miscellaneous', name: 'miscellaneous', type: 'text' },
-  ];
-
-  // In edit mode, only render the basic applicant fields.
-  const fieldsToRender = mode === 'edit'
-    ? applicantGroup
-    : [
-        ...applicantGroup,
-        { groupLabel: 'Record Details', fields: recordGroup },
-        { groupLabel: 'Fees & Clearances', fields: feesGroup },
-        { groupLabel: 'Surcharges', fields: surchargesGroup },
-        { groupLabel: 'Totals & Additional Info', fields: totalsGroup },
-      ];
-
   return (
     <div className="max-w-5xl mx-auto my-8 p-8 bg-white shadow-lg rounded-lg">
       <h2 className="text-4xl font-bold mb-8 text-center text-gray-800">
         {mode === 'edit' ? 'Edit Business Record' : 'Create Business Record'}
       </h2>
       <form onSubmit={handleSubmit}>
-        {/* If in edit mode, render the simple applicant group */}
-        {mode === 'edit' && (
+        {mode === 'edit' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {applicantGroup.map((input) => (
+            {[...applicantGroup, ...renewalFrequencyGroup].map((input) => (
               <div key={input.name} className="flex flex-col">
                 <label className="mb-2 text-lg font-medium text-gray-700">
                   {input.label}
                 </label>
-                <input
-                  type={input.type}
-                  name={input.name}
-                  value={formData[input.name] || ''}
-                  onChange={handleChange}
-                  className="p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder={`Enter ${input.label}`}
-                />
+                {input.type === 'select' ? (
+                  <select
+                    name={input.name}
+                    value={formData[input.name] || ''}
+                    onChange={handleChange}
+                    className="p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {input.name === 'frequency' && (
+                      <>
+                        <option value="quarterly">Quarterly</option>
+                        <option value="semi-annual">Semi-Annual</option>
+                        <option value="annual">Annual</option>
+                      </>
+                    )}
+                  </select>
+                ) : input.type === 'checkbox' ? (
+                  <input
+                    type="checkbox"
+                    name={input.name}
+                    checked={formData[input.name] === "true"}
+                    onChange={handleChange}
+                    className="p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                ) : (
+                  <input
+                    type={input.type}
+                    name={input.name}
+                    value={formData[input.name] || ''}
+                    onChange={handleChange}
+                    className="p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={`Enter ${input.label}`}
+                  />
+                )}
               </div>
             ))}
           </div>
-        )}
-
-        {/* In create mode, render fields grouped by section */}
-        {mode !== 'edit' && (
+        ) : (
           <>
-            {/* Applicant Details */}
             <h3 className="text-2xl font-semibold my-4">Applicant Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {applicantGroup.map((input) => (
+              {applicantGroup.filter(f => f.name !== 'renewed').map((input) => (
                 <div key={input.name} className="flex flex-col">
-                  <label className="mb-2 text-lg font-medium text-gray-700">
-                    {input.label}
-                  </label>
+                  <label className="mb-2 text-lg font-medium text-gray-700">{input.label}</label>
                   <input
                     type={input.type}
                     name={input.name}
@@ -268,36 +316,55 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
                   />
                 </div>
               ))}
+              {renewalFrequencyGroup.map((input) => (
+                <div key={input.name} className="flex flex-col">
+                  <label className="mb-2 text-lg font-medium text-gray-700">{input.label}</label>
+                  <select
+                    name={input.name}
+                    value={formData[input.name] || ''}
+                    onChange={handleChange}
+                    className="p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="quarterly">Quarterly</option>
+                    <option value="semi-annual">Semi-Annual</option>
+                    <option value="annual">Annual</option>
+                  </select>
+                </div>
+              ))}
             </div>
 
-            {/* Record Details */}
             <h3 className="text-2xl font-semibold my-4">Record Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {recordGroup.map((input) => (
                 <div key={input.name} className="flex flex-col">
-                  <label className="mb-2 text-lg font-medium text-gray-700">
-                    {input.label}
-                  </label>
-                  <input
-                    type={input.type}
-                    name={input.name}
-                    value={formData[input.name] || ''}
-                    onChange={handleChange}
-                    className="p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={`Enter ${input.label}`}
-                  />
+                  <label className="mb-2 text-lg font-medium text-gray-700">{input.label}</label>
+                  {input.type === 'date' ? (
+                    <input
+                      type="date"
+                      name={input.name}
+                      value={formData[input.name] || ''}
+                      onChange={handleChange}
+                      className="p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  ) : (
+                    <input
+                      type={input.type}
+                      name={input.name}
+                      value={formData[input.name] || ''}
+                      onChange={handleChange}
+                      className="p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder={`Enter ${input.label}`}
+                    />
+                  )}
                 </div>
               ))}
             </div>
 
-            {/* Fees & Clearances */}
             <h3 className="text-2xl font-semibold my-4">Fees & Clearances</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {feesGroup.map((input) => (
                 <div key={input.name} className="flex flex-col">
-                  <label className="mb-2 text-lg font-medium text-gray-700">
-                    {input.label}
-                  </label>
+                  <label className="mb-2 text-lg font-medium text-gray-700">{input.label}</label>
                   <input
                     type={input.type}
                     name={input.name}
@@ -310,14 +377,28 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
               ))}
             </div>
 
-            {/* Surcharges */}
+            <h3 className="text-2xl font-semibold my-4">Additional Details</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {additionalGroup.map((input) => (
+                <div key={input.name} className="flex flex-col">
+                  <label className="mb-2 text-lg font-medium text-gray-700">{input.label}</label>
+                  <input
+                    type={input.type}
+                    name={input.name}
+                    value={formData[input.name] || ''}
+                    onChange={handleChange}
+                    className="p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={`Enter ${input.label}`}
+                  />
+                </div>
+              ))}
+            </div>
+
             <h3 className="text-2xl font-semibold my-4">Surcharges</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {surchargesGroup.map((input) => (
                 <div key={input.name} className="flex flex-col">
-                  <label className="mb-2 text-lg font-medium text-gray-700">
-                    {input.label}
-                  </label>
+                  <label className="mb-2 text-lg font-medium text-gray-700">{input.label}</label>
                   <input
                     type={input.type}
                     name={input.name}
@@ -330,14 +411,11 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
               ))}
             </div>
 
-            {/* Totals & Additional Info */}
             <h3 className="text-2xl font-semibold my-4">Totals & Additional Info</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {totalsGroup.map((input) => (
                 <div key={input.name} className="flex flex-col">
-                  <label className="mb-2 text-lg font-medium text-gray-700">
-                    {input.label}
-                  </label>
+                  <label className="mb-2 text-lg font-medium text-gray-700">{input.label}</label>
                   <input
                     type={input.type}
                     name={input.name}
@@ -351,7 +429,6 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
             </div>
           </>
         )}
-
         <div className="flex justify-end mt-8">
           <button
             type="submit"

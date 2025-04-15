@@ -4,6 +4,7 @@ export interface BusinessRecord {
   applicantName: string;
   applicantAddress: string;
   businessName: string;
+  natureOfBusiness: string; // new field: represents Nature of Business
   capitalInvestment: string;
   year: number;
   date: string;
@@ -11,8 +12,12 @@ export interface BusinessRecord {
   orNo: string;
   busTax: number;
   mayorsPermit: number;
+  mayorsPermitVideoK: string; // new field: next to mayorsPermit
+  mayorsPermitHouseAccommodation: string; // new field: next to mayorsPermit
   sanitaryInps: number;
   policeClearance: number;
+  barangayClearance: string; // new field: added after policeClearance
+  zoningClearance?: string; // existing new field; adjust optional status as needed
   taxClearance: number;
   garbage: number;
   garbageCollection: string; // new field
@@ -33,4 +38,5 @@ export interface BusinessRecord {
   remarks: string;
   frequency: 'quarterly' | 'semi-annual' | 'annual'; // new field for renewal frequency
   renewed: boolean; // new field to indicate if the record has been renewed
+  Other?: string; // new field added for additional notes (optional)
 }

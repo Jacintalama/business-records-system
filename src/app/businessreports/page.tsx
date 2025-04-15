@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, ChangeEvent, FormEvent, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import NavBar from "../components/NavBar";
 import Topbar from "../components/Topbar";
 import { Pie } from "react-chartjs-2";
@@ -97,78 +97,62 @@ interface OwnerInfo {
 
 const columnGroups = [
   {
-    label: 'Basic Info',
+    label: "Basic Info",
     columns: [
-      { key: 'year', label: 'Year' },
+      { key: "year", label: "Year" },
       {
-        key: 'date',
-        label: 'Date',
+        key: "date",
+        label: "Date",
         format: (val: string) => new Date(val).toLocaleDateString(),
       },
-      { key: 'gross', label: 'Gross' },
-      { key: 'orNo', label: 'OR No.' },
-      { key: 'frequency', label: 'Frequency' },
+      { key: "gross", label: "Gross" },
+      { key: "orNo", label: "OR No." },
+      { key: "frequency", label: "Frequency" },
     ],
   },
   {
-    label: 'Fees & Clearances',
+    label: "Fees & Clearances",
     columns: [
-      { key: 'busTax', label: 'BUS TAX' },
-      { key: 'mayorsPermit', label: "Mayor's Permit" },
-      { key: 'sanitaryInps', label: 'Sanitary Inps' },
-      { key: 'policeClearance', label: 'Police Clearance' },
-      { key: 'taxClearance', label: 'Tax Clearance' },
-      { key: 'garbage', label: 'Garbage' },
-      { key: 'verification', label: 'Verification' },
-      { key: 'weightAndMass', label: 'Weight & Mass' },
-      { key: 'healthClearance', label: 'Health Clearance' },
-      { key: 'secFee', label: 'SEC Fee' },
-      { key: 'menro', label: 'MENRO' },
-      { key: 'docTax', label: 'Doc Tax' },
-      { key: 'eggsFee', label: "Egg's Fee" },
+      { key: "busTax", label: "BUS TAX" },
+      { key: "mayorsPermit", label: "Mayor's Permit" },
+      { key: "sanitaryInps", label: "Sanitary Inps" },
+      { key: "policeClearance", label: "Police Clearance" },
+      { key: "taxClearance", label: "Tax Clearance" },
+      { key: "garbage", label: "Garbage" },
+      { key: "verification", label: "Verification" },
+      { key: "weightAndMass", label: "Weight & Mass" },
+      { key: "healthClearance", label: "Health Clearance" },
+      { key: "secFee", label: "SEC Fee" },
+      { key: "menro", label: "MENRO" },
+      { key: "docTax", label: "Doc Tax" },
+      { key: "eggsFee", label: "Egg's Fee" },
     ],
   },
   {
-    label: 'Surcharges',
+    label: "Surcharges",
     columns: [
-      { key: 'surcharge25', label: '25% Surcharge' },
-      { key: 'sucharge2', label: '2% Month' },
+      { key: "surcharge25", label: "25% Surcharge" },
+      { key: "sucharge2", label: "2% Month" },
     ],
   },
   {
-    label: 'Additional Info',
+    label: "Additional Info",
     columns: [
-      { key: 'marketCertification', label: 'Market Certification' },
-      { key: 'miscellaneous', label: 'Miscellaneous' },
+      { key: "marketCertification", label: "Market Certification" },
+      { key: "miscellaneous", label: "Miscellaneous" },
     ],
   },
   {
-    label: 'Totals & Remarks',
+    label: "Totals & Remarks",
     columns: [
-      { key: 'totalPayment', label: 'Total Payment' },
-      { key: 'remarks', label: 'Remarks' },
+      { key: "totalPayment", label: "Total Payment" },
+      { key: "remarks", label: "Remarks" },
     ],
   },
 ];
 
-// Optional helper function to compute renewal due date
-const computeRenewalDueDate = (dateStr: string, frequency: string): Date => {
-  const recordDate = new Date(dateStr);
-  const dueDate = new Date(recordDate);
-  if (frequency === "quarterly") {
-    dueDate.setMonth(dueDate.getMonth() + 3);
-  } else if (frequency === "semi-annual") {
-    dueDate.setMonth(dueDate.getMonth() + 6);
-  } else if (frequency === "annual") {
-    dueDate.setFullYear(dueDate.getFullYear() + 1);
-  }
-  return dueDate;
-};
-
 //
-// BusinessReportsPage: We assume the API for delinquent reports returns aggregated counts,
-// but if there’s an error (like the "dateStr.split" error), we default that barangay’s count to 0.
-// Also, renewed records are not counted as delinquent.
+// BusinessReportsPage: Now the report shows the overall Business Tax data alongside a pumpboat count (boat count).
 //
 export default function BusinessReportsPage() {
   const router = useRouter();
@@ -205,20 +189,20 @@ export default function BusinessReportsPage() {
   }, [router]);
 
   // Filters
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState<number>(
+    new Date().getFullYear()
+  );
   const [selectedBarangay, setSelectedBarangay] = useState<string>("Overall");
-  // The onlyDelinquent flag affects which data is displayed in the delinquent report
-  const [onlyDelinquent, setOnlyDelinquent] = useState<boolean>(false);
 
-  // Report data states
+  // Report data state for overall Business Tax
   const [overallReportData, setOverallReportData] = useState<{
     businessTax: { new: number; renew: number; total: number };
   } | null>(null);
-  const [delinquentReportData, setDelinquentReportData] = useState<{
-    businessTax: { new: number; renew: number; total: number };
-  } | null>(null);
 
-  // Fetch reports for overall and delinquent data
+  // State for pumpboat count (the total number of boat records)
+  const [pumpboatCount, setPumpboatCount] = useState<number>(0);
+
+  // Fetch Business Tax reports for overall data
   useEffect(() => {
     async function fetchReports() {
       try {
@@ -228,11 +212,17 @@ export default function BusinessReportsPage() {
 
           // Fetch overall data for each barangay
           const overallPromises = individualBarangays.map((b) => {
-            const url = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(b)}`;
+            const url = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(
+              b
+            )}`;
             return fetch(url, { credentials: "include" }).then(async (response) => {
               if (!response.ok) {
                 const errorText = await response.text();
-                console.error(`Failed to fetch report for ${b}:`, response.status, errorText);
+                console.error(
+                  `Failed to fetch report for ${b}:`,
+                  response.status,
+                  errorText
+                );
                 throw new Error(`Failed to fetch report for ${b}`);
               }
               return response.json();
@@ -246,81 +236,38 @@ export default function BusinessReportsPage() {
             overallRenew += result.businessTax?.renew || 0;
           });
           setOverallReportData({
-            businessTax: { new: overallNew, renew: overallRenew, total: overallNew + overallRenew },
-          });
-
-          // Fetch delinquent data for each barangay.
-          // We catch errors and default to 0 count if a date parsing error occurs.
-          const delinquentPromises = individualBarangays.map((b) => {
-            const url = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(b)}&delinquent=true`;
-            return fetch(url, { credentials: "include" })
-              .then(async (response) => {
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  if (errorText.includes("dateStr.split")) {
-                    console.warn(`Warning: delinquent report for ${b} encountered a date parsing error. Defaulting count to 0.`);
-                    return { businessTax: { new: 0, renew: 0, total: 0 } };
-                  } else {
-                    console.error(`Failed to fetch delinquent report for ${b}:`, response.status, errorText);
-                    return { businessTax: { new: 0, renew: 0, total: 0 } };
-                  }
-                }
-                return response.json();
-              })
-              .catch((error) => {
-                console.error(`Error fetching delinquent report for ${b}:`, error);
-                return { businessTax: { new: 0, renew: 0, total: 0 } };
-              });
-          });
-          const delinquentResults = await Promise.all(delinquentPromises);
-          let delinquentNew = 0;
-          delinquentResults.forEach((result) => {
-            delinquentNew += result.businessTax?.new || 0;
-          });
-          setDelinquentReportData({
-            businessTax: { new: delinquentNew, renew: 0, total: delinquentNew },
+            businessTax: {
+              new: overallNew,
+              renew: overallRenew,
+              total: overallNew + overallRenew,
+            },
           });
         } else {
           // Fetch for a specific barangay.
-          const baseUrl = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(selectedBarangay)}`;
+          const baseUrl = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(
+            selectedBarangay
+          )}`;
           const overallRes = await fetch(baseUrl, { credentials: "include" });
           if (!overallRes.ok) {
             const errorText = await overallRes.text();
-            console.error("Failed to fetch overall report:", overallRes.status, errorText);
-            throw new Error(`Failed to fetch overall report: ${overallRes.statusText}`);
+            console.error(
+              "Failed to fetch overall report:",
+              overallRes.status,
+              errorText
+            );
+            throw new Error(
+              `Failed to fetch overall report: ${overallRes.statusText}`
+            );
           }
           const overallData = await overallRes.json();
           const overallNew = overallData.businessTax?.new || 0;
           const overallRenew = overallData.businessTax?.renew || 0;
           setOverallReportData({
-            businessTax: { new: overallNew, renew: overallRenew, total: overallNew + overallRenew },
-          });
-
-          let delinquentData;
-          try {
-            const delinquentRes = await fetch(baseUrl + "&delinquent=true", { credentials: "include" });
-            if (!delinquentRes.ok) {
-              const errorText = await delinquentRes.text();
-              if (errorText.includes("dateStr.split")) {
-                console.warn("Warning: delinquent report encountered a date parsing error. Defaulting count to 0.");
-                delinquentData = { businessTax: { new: 0, renew: 0, total: 0 } };
-              } else {
-                console.error("Failed to fetch delinquent report:", delinquentRes.status, errorText);
-                throw new Error(`Failed to fetch delinquent report: ${delinquentRes.statusText}`);
-              }
-            } else {
-              delinquentData = await delinquentRes.json();
-            }
-            console.log("Overall Report Data:", overallReportData);
-            console.log("Delinquent Report Data:", delinquentReportData);
-          } catch (error) {
-            
-            console.error("Error fetching delinquent report:", error);
-            delinquentData = { businessTax: { new: 0, renew: 0, total: 0 } };
-          }
-          const delinquentNew = delinquentData.businessTax?.new || 0;
-          setDelinquentReportData({
-            businessTax: { new: delinquentNew, renew: 0, total: delinquentNew },
+            businessTax: {
+              new: overallNew,
+              renew: overallRenew,
+              total: overallNew + overallRenew,
+            },
           });
         }
       } catch (error) {
@@ -330,21 +277,66 @@ export default function BusinessReportsPage() {
     fetchReports();
   }, [selectedYear, selectedBarangay]);
 
-  // Pie Chart Data using overall and delinquent report data
+  // Fetch pumpboat count (boat count) from boat records
+  useEffect(() => {
+    async function fetchPumpboatCount() {
+      try {
+        let allRecords: any[] = [];
+
+        if (selectedBarangay === "Overall") {
+          const individualBarangays = barangays.filter((b) => b !== "Overall");
+          const promises = individualBarangays.map((b) => {
+            const url = `http://192.168.1.107:3000/api/boatrecords?barangay=${encodeURIComponent(
+              b
+            )}`;
+            return fetch(url, { credentials: "include" }).then((res) => res.json());
+          });
+          const results = await Promise.all(promises);
+          results.forEach((r) => {
+            if (Array.isArray(r.records)) {
+              allRecords.push(...r.records);
+            }
+          });
+        } else {
+          const url = `http://192.168.1.107:3000/api/boatrecords?barangay=${encodeURIComponent(
+            selectedBarangay
+          )}`;
+          const res = await fetch(url, { credentials: "include" });
+          const result = await res.json();
+          allRecords = Array.isArray(result.records) ? result.records : [];
+        }
+
+        // Filter by selectedYear
+        const countThisYear = allRecords.filter((rec) => {
+          const recYear = new Date(rec.date).getFullYear();
+          return recYear === selectedYear;
+        }).length;
+
+        setPumpboatCount(countThisYear);
+      } catch (error) {
+        console.error("Error fetching pumpboat count:", error);
+        setPumpboatCount(0);
+      }
+    }
+    fetchPumpboatCount();
+  }, [selectedBarangay, selectedYear]);
+
+
+  // Pie Chart Data using overall and pumpboat count data
   const chartData = {
-    labels: ["New", "Renew", "Delinquent"],
+    labels: ["New", "Renew", "Pumpboat"],
     datasets: [
       {
         label: `Year ${selectedYear}`,
         data: [
           overallReportData ? overallReportData.businessTax.new : 0,
           overallReportData ? overallReportData.businessTax.renew : 0,
-          delinquentReportData ? delinquentReportData.businessTax.total : 0,
+          pumpboatCount,
         ],
         backgroundColor: [
           "rgb(54, 162, 235)", // Blue for New
           "rgb(75, 192, 192)", // Teal for Renew
-          "rgb(255, 99, 132)", // Red for Delinquent
+          "rgb(255, 99, 132)", // Red for Pumpboat
         ],
       },
     ],
@@ -449,7 +441,7 @@ export default function BusinessReportsPage() {
           <Pie data={chartData} options={chartOptions} />
         </div>
 
-        {/* Overall Business Tax Data Table */}
+        {/* Overall Business Tax Data Table (now including Pumpboat row) */}
         <div className="overflow-x-auto bg-white rounded shadow p-6 mb-8">
           <h2 className="text-xl font-semibold text-gray-700 mb-4">
             Overall Business Tax Data
@@ -483,6 +475,13 @@ export default function BusinessReportsPage() {
                   <td className="px-4 py-3">{overallReportData.businessTax.renew}</td>
                   <td className="px-4 py-3">{overallReportData.businessTax.total}</td>
                 </tr>
+                {/* New Pumpboat row */}
+                <tr>
+                  <td className="px-4 py-3">Pumpboat Count</td>
+                  <td className="px-4 py-3">{selectedYear}</td>
+                  <td className="px-4 py-3" colSpan={2}></td>
+                  <td className="px-4 py-3">{pumpboatCount}</td>
+                </tr>
               </tbody>
             </table>
           ) : (
@@ -490,38 +489,35 @@ export default function BusinessReportsPage() {
           )}
         </div>
 
-        {/* Delinquent Business Tax Data Table */}
+
+        {/* Pumpboat Count Data Table
         <div className="overflow-x-auto bg-white rounded shadow p-6">
           <h2 className="text-xl font-semibold text-gray-700 mb-4">
-            Delinquent Business Tax Data
+            Pumpboat (Boat Count) Data
           </h2>
-          {delinquentReportData ? (
-            <table className="table-fixed w-full border-collapse">
-              <thead className="bg-gray-100 border-b border-gray-200">
-                <tr>
-                  <th className="w-1/3 px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                    Category
-                  </th>
-                  <th className="w-1/3 px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                    Year
-                  </th>
-                  <th className="w-1/3 px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                    Total
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-gray-200">
-                  <td className="px-4 py-3">Delinquent Business Tax</td>
-                  <td className="px-4 py-3">{selectedYear}</td>
-                  <td className="px-4 py-3">{delinquentReportData.businessTax.total}</td>
-                </tr>
-              </tbody>
-            </table>
-          ) : (
-            <p>Loading Delinquent data...</p>
-          )}
-        </div>
+          <table className="table-fixed w-full border-collapse">
+            <thead className="bg-gray-100 border-b border-gray-200">
+              <tr>
+                <th className="w-1/3 px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                  Category
+                </th>
+                <th className="w-1/3 px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                  Barangay
+                </th>
+                <th className="w-1/3 px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                  Pumpboat Count
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-gray-200">
+                <td className="px-4 py-3">Pumpboat Count</td>
+                <td className="px-4 py-3">{selectedBarangay}</td>
+                <td className="px-4 py-3">{pumpboatCount}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div> */}
       </main>
     </div>
   );

@@ -30,9 +30,7 @@ const Topbar = () => {
         if (res.ok) {
           const data = await res.json();
           setIsAuthenticated(true);
-          const fullName = `${data.firstName} ${
-            data.middleName ? data.middleName + ' ' : ''
-          }${data.lastName}`;
+          const fullName = `${data.firstName} ${data.middleName ? data.middleName + ' ' : ''}${data.lastName}`;
           setUserName(fullName || 'User');
         } else {
           setIsAuthenticated(false);
@@ -102,7 +100,17 @@ const Topbar = () => {
 
         {showDropdown && (
           <div className="absolute right-0 mt-2 w-40 bg-white border rounded shadow-lg z-10 transition transform duration-200 ease-out origin-top">
-            <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
+            <Link
+              href="/profile"
+              onClick={() => setShowDropdown(false)}
+              className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+            >
+              Update Profile
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+            >
               Logout
             </button>
           </div>

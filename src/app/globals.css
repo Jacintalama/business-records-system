@@ -25,27 +25,67 @@
   font-family: Arial, Helvetica, sans-serif;
 } */
 
+
 @media print {
   @page {
-    size: A4 landscape; /* Forces A4 in landscape */
-    margin: 0.5cm;      /* Adjust margins as needed */
+    size: 13in 8.5in; /* Landscape long bond: width x height */
+    margin: 1cm;
   }
+
   body {
     -webkit-print-color-adjust: exact;
+    font-size: 11px;
   }
-  /* Hide all non-print elements (using a helper class) */
+
   .no-print,
   .top-bar {
     display: none !important;
   }
-  /* Optional: scale content to fit one page if needed */
+
   .print-container {
     width: 100%;
-    transform: scale(0.9); /* Adjust scale as necessary */
+    transform: scale(0.98); /* Adjust if content overflows */
     transform-origin: top left;
   }
-  /* Prevent table rows from breaking mid-row */
+
   table {
+    width: 100% !important;
+    border-collapse: collapse;
+    table-layout: auto;
     page-break-inside: avoid;
+  }
+
+  th, td {
+    border: 1px solid #000;
+    padding: 6px;
+    text-align: left;
+    white-space: normal !important;
+    word-wrap: break-word;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+
+  img.print-logo {
+    max-width: 200px;
+    height: auto;
+    object-fit: contain;
+  }
+
+  .print-label {
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    color: black !important;
+  }
+
+  .print-value {
+    font-size: 14px !important;
+    font-weight: 500;
+    color: #222;
   }
 }

@@ -13,4 +13,4 @@ const PdfRecordsReports = () => {
         </button>
       );
     };
-export default PdfRecordsReports
+export default PdfRecordsReports  

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FaFileAlt, FaChartBar } from 'react-icons/fa';
+import { FaFileAlt, FaChartBar, FaShip, FaBicycle } from 'react-icons/fa';
 
 import NavBar from './components/NavBar';
 import Footer from './components/Footer';
@@ -58,7 +58,7 @@ export default function Dashboard() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Function to handle navigation on protected links
+  // Handle protected navigation
   const handleProtectedNavigation = (e: React.MouseEvent, path: string) => {
     if (!isAuthenticated) {
       e.preventDefault();
@@ -87,11 +87,12 @@ export default function Dashboard() {
         </header>
 
         {/* Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-8 justify-items-center">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 justify-items-center">
+          {/* Business Records */}
           <Link
             href="/businessrecord"
             onClick={(e) => handleProtectedNavigation(e, '/businessrecord')}
-            className="flex flex-col items-center bg-white rounded shadow p-16 hover:shadow-lg transition"
+            className="flex flex-col items-center bg-white rounded shadow p-16 hover:shadow-lg transition text-center"
           >
             <FaFileAlt className="mb-4 text-8xl text-gray-700" />
             <span className="font-semibold text-gray-800 text-xl">
@@ -99,18 +100,44 @@ export default function Dashboard() {
             </span>
           </Link>
 
+          {/* Boat Records */}
+          <Link
+            href="/boatrecords"
+            onClick={(e) => handleProtectedNavigation(e, '/boatrecords')}
+            className="flex flex-col items-center bg-white rounded shadow p-16 hover:shadow-lg transition text-center"
+          >
+            <FaShip className="mb-4 text-8xl text-gray-700" />
+            <span className="font-semibold text-gray-800 text-xl">
+              Boat Records
+            </span>
+          </Link>
+
+          {/* Tricycle Records (Coming Soon) */}
+          {/* 
+            'text-center' ensures the "Coming Soon" label, icon,
+            and record name are all horizontally aligned.
+          */}
+          <div className="flex flex-col items-center bg-white rounded shadow p-16 hover:shadow-lg transition text-center">
+            <FaBicycle className="mb-4 text-8xl text-gray-700" />
+            <span className="font-semibold text-gray-800 text-xl">
+              Tricycle Records
+            </span>
+            <span className="text-red-500 text-xs uppercase tracking-wider mt-2">
+              Coming Soon
+            </span>
+          </div>
+
+          {/* Business Reports */}
           <Link
             href="/businessreports"
             onClick={(e) => handleProtectedNavigation(e, '/businessreports')}
-            className="flex flex-col items-center bg-white rounded shadow p-16 hover:shadow-lg transition"
+            className="flex flex-col items-center bg-white rounded shadow p-16 hover:shadow-lg transition text-center"
           >
             <FaChartBar className="mb-4 text-8xl text-gray-700" />
             <span className="font-semibold text-gray-800 text-xl">
               Business Reports
             </span>
           </Link>
-
-          
         </div>
 
         {/* Spacer */}

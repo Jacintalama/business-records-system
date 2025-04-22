@@ -341,9 +341,9 @@ const BusinessRecordForm: React.FC<BusinessRecordFormProps> = ({
                 >
                   {input.name === 'frequency' && (
                     <>
-                      <option value="quarterly">Quarterly</option>
-                      <option value="semi-annual">Semi-Annual</option>
-                      <option value="annual">Annual</option>
+                      <option value="Quarterly">Quarterly</option>
+                      <option value="Semi-annual">Semi-Annual</option>
+                      <option value="Annual">Annual</option>
                     </>
                   )}
                 </select>

@@ -15,6 +15,7 @@ import Topbar from "../components/Topbar";
 import { isRecordDelinquentExact } from "../utils/periodUtils";
 import BusinessRecordsPdf from "../components/BusinessRecordsPdf"; // New PDF printing component
 
+
 interface ApplicantDisplay {
   id: string;
   applicantName: string;
@@ -54,6 +55,7 @@ const barangays = [
 ];
 
 const frequencyOptions = ["all", "quarterly", "semi-annual", "annual"];
+
 
 const capitalize = (str: string) =>
   str.charAt(0).toUpperCase() + str.slice(1);
@@ -99,11 +101,13 @@ export const tableColumns = [
   },
   {
     key: "frequency",
-    label: "mode of payment",
+    label: "Mode of Payment",
   },
 ];
 
 export default function BusinessRecordsPage() {
+
+
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -135,12 +139,24 @@ export default function BusinessRecordsPage() {
   }, [router]);
 
   const [selectedBarangay, setSelectedBarangay] = useState<string>(barangays[0]);
+
+  // This function use to force refresh
+  const [version] = useState(0);
+  useEffect(() => {
+
+    fetchApplicants(selectedBarangay);
+  }, [selectedBarangay, version]); // Include version in dependency array
+
+
   useEffect(() => {
     const barangayFromQuery = searchParams.get("barangay");
-    if (barangayFromQuery && barangays.includes(barangayFromQuery)) {
-      setSelectedBarangay(barangayFromQuery);
-    }
+    const initialBarangay = barangayFromQuery && barangays.includes(barangayFromQuery)
+      ? barangayFromQuery
+      : barangays[0];
+  
+    setSelectedBarangay(initialBarangay);
   }, [searchParams]);
+  
 
   const [selectedFrequency, setSelectedFrequency] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -211,18 +227,18 @@ export default function BusinessRecordsPage() {
         selectedBusinessName === "all"
           ? uniqueApplicants
           : uniqueApplicants.filter(
-              (a) => a.businessName.toLowerCase() === selectedBusinessName
-            );
+            (a) => a.businessName.toLowerCase() === selectedBusinessName
+          );
 
       const finalApplicants =
         selectedFrequency === "all"
           ? filteredByBusiness
           : filteredByBusiness.filter(
-              (a) =>
-                a.frequency &&
-                a.frequency.trim().toLowerCase() ===
-                  selectedFrequency.trim().toLowerCase()
-            );
+            (a) =>
+              a.frequency &&
+              a.frequency.trim().toLowerCase() ===
+              selectedFrequency.trim().toLowerCase()
+          );
 
       const searchedApplicants = finalApplicants.filter((a) =>
         `${a.applicantName} ${a.businessName}`
@@ -241,14 +257,11 @@ export default function BusinessRecordsPage() {
   };
 
   useEffect(() => {
-    fetchApplicants(selectedBarangay);
-  }, [
-    selectedBarangay,
-    onlyDelinquent,
-    selectedBusinessName,
-    selectedFrequency,
-    searchQuery,
-  ]);
+    if (selectedBarangay) {
+      fetchApplicants(selectedBarangay);
+    }
+  }, [selectedBarangay, onlyDelinquent, selectedBusinessName, selectedFrequency, searchQuery]);
+  
 
   const uniqueBusinessNames = Array.from(
     new Set(applicants.map((a) => a.businessName.toLowerCase()))
@@ -344,7 +357,12 @@ export default function BusinessRecordsPage() {
             </label>
             <select
               value={selectedBarangay}
-              onChange={(e) => setSelectedBarangay(e.target.value)}
+              onChange={(e) => {
+                const barangay = e.target.value;
+                setSelectedBarangay(barangay);
+                router.replace(`?barangay=${encodeURIComponent(barangay)}`);
+              }}
+              
               className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
             >
               {barangays.map((b) => (
@@ -467,7 +485,10 @@ export default function BusinessRecordsPage() {
                 paginatedApplicants.map((applicant) => (
                   <tr
                     key={applicant.id}
-                    className="hover:bg-gray-100 odd:bg-white even:bg-gray-50"
+                    className={`hover:bg-gray-100 ${isRecordDelinquentExact(applicant)
+                        ? 'bg-red-300'
+                        : 'odd:bg-white even:bg-gray-50'
+                      }`}
                   >
                     {tableColumns.map((col) => {
                       let value: string | number = "";

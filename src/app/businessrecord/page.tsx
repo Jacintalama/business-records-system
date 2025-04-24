@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, ChangeEvent } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import Select from "react-select";
 import { toast, ToastContainer } from "react-toastify";
@@ -60,6 +60,15 @@ const frequencyOptions = ["all", "quarterly", "semi-annual", "annual"];
 const capitalize = (str: string) =>
   str.charAt(0).toUpperCase() + str.slice(1);
 
+// Peso sign
+const phpFormatter = new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+// end
+
 // Table columns definition used for both page display and PDF.
 export const tableColumns = [
   {
@@ -98,6 +107,9 @@ export const tableColumns = [
   {
     key: "totalPayment",
     label: "Amount",
+    // format the number as ₱X,XXX.XX
+    format: (val: string | number) =>
+      phpFormatter.format(typeof val === 'number' ? val : parseFloat(val) || 0),
   },
   {
     key: "frequency",
@@ -107,7 +119,7 @@ export const tableColumns = [
 
 export default function BusinessRecordsPage() {
 
-
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -142,10 +154,13 @@ export default function BusinessRecordsPage() {
 
   // This function use to force refresh
   const [version] = useState(0);
-  useEffect(() => {
 
+  useEffect(() => {
     fetchApplicants(selectedBarangay);
-  }, [selectedBarangay, version]); // Include version in dependency array
+  }, [
+    pathname,
+    selectedBarangay,
+  ]);
 
 
   useEffect(() => {
@@ -153,10 +168,10 @@ export default function BusinessRecordsPage() {
     const initialBarangay = barangayFromQuery && barangays.includes(barangayFromQuery)
       ? barangayFromQuery
       : barangays[0];
-  
+
     setSelectedBarangay(initialBarangay);
   }, [searchParams]);
-  
+
 
   const [selectedFrequency, setSelectedFrequency] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -199,7 +214,7 @@ export default function BusinessRecordsPage() {
             recordId: String(rec.id),
             year: rec.year ? Number(rec.year) : new Date().getFullYear(),
             date: rec.date ? rec.date : new Date().toISOString(),
-            frequency: rec.frequency || "annual",
+            frequency: (rec.frequency || "annual").trim().toLowerCase(),
             renewed: rec.renewed || false,
             remarks: rec.remarks || "",
             gross: rec.gross || "",
@@ -261,7 +276,7 @@ export default function BusinessRecordsPage() {
       fetchApplicants(selectedBarangay);
     }
   }, [selectedBarangay, onlyDelinquent, selectedBusinessName, selectedFrequency, searchQuery]);
-  
+
 
   const uniqueBusinessNames = Array.from(
     new Set(applicants.map((a) => a.businessName.toLowerCase()))
@@ -362,7 +377,7 @@ export default function BusinessRecordsPage() {
                 setSelectedBarangay(barangay);
                 router.replace(`?barangay=${encodeURIComponent(barangay)}`);
               }}
-              
+
               className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
             >
               {barangays.map((b) => (
@@ -436,11 +451,15 @@ export default function BusinessRecordsPage() {
         {/* Action Buttons: Add Record & Print PDF */}
         <div className="flex items-center justify-between mb-4">
           <button
-            onClick={() => setIsModalOpen(true)}
-            className="px-4 py-2 bg-green-600 text-white font-semibold rounded shadow hover:bg-green-500 transition-colors"
+            onClick={() =>
+              window.location.href = `http://192.168.1.107:3001/records/new`
+            }
+            className="inline-flex items-center px-4 py-2 bg-green-600 text-white font-semibold rounded shadow hover:bg-green-500 transition-colors"
           >
             <FaPlus className="inline-block mr-2" /> Add Record
           </button>
+
+
 
           {/* New PDF printing component */}
           <BusinessRecordsPdf
@@ -486,23 +505,27 @@ export default function BusinessRecordsPage() {
                   <tr
                     key={applicant.id}
                     className={`hover:bg-gray-100 ${isRecordDelinquentExact(applicant)
-                        ? 'bg-red-300'
-                        : 'odd:bg-white even:bg-gray-50'
+                      ? 'bg-red-300'
+                      : 'odd:bg-white even:bg-gray-50'
                       }`}
                   >
                     {tableColumns.map((col) => {
-                      let value: string | number = "";
-                      if (col.key === "date") {
-                        value = col.format ? col.format(applicant.date) : applicant.date;
-                      } else {
-                        value = (applicant as any)[col.key] || "";
-                      }
+                      // pull the raw value out
+                      const raw = (col.key === "date" && col.format)
+                        ? col.format((applicant as any)[col.key])
+                        : (applicant as any)[col.key];
+                      // if there's a custom formatter, use it; otherwise just show raw
+                      const display = col.format && col.key !== "date"
+                        ? col.format(raw)
+                        : raw;
                       return (
                         <td key={`${applicant.id}-${col.key}`} className="px-4 py-2 border-b border-gray-200">
-                          {value}
+                          {display}
                         </td>
                       );
                     })}
+
+
                     <td className="px-4 py-2 border-b border-gray-200">
                       <div className="flex items-center space-x-2">
                         <Link

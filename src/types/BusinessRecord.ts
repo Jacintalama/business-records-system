@@ -1,28 +1,40 @@
+// types/BusinessRecord.ts
+
+// Represents one permit on a business record, with its amount
+export interface BusinessRecordPermit {
+  mayorPermitId: number;
+  amount: number;
+}
+
+// Your main record type
 export interface BusinessRecord {
+  id: string;                        // UUID
   applicant: boolean;
-  id: string; // updated for UUID
   applicantName: string;
   applicantAddress: string;
   businessName: string;
-  natureOfBusiness: string; // new field: represents Nature of Business
+  natureOfBusiness: string;          // new
   capitalInvestment: string;
   year: number;
-  date: string;
+  date: string;                      // ISO “YYYY‑MM‑DD”
   gross: number;
   orNo: string;
   busTax: number;
+
+  // Your MP fields:
   mayorsPermit: number;
-  mayorsPermitVideoK: string; // new field: next to mayorsPermit
-  mayorsPermitHouseAccommodation: string; // new field: next to mayorsPermit
+  mayorsPermitVideoK: string;                // new
+  mayorsPermitHouseAccommodation: string;    // new
+
   sanitaryInps: number;
   policeClearance: number;
-  barangayClearance: string; // new field: added after policeClearance
-  zoningClearance?: string; // existing new field; adjust optional status as needed
+  barangayClearance: string;      // new
+  zoningClearance?: string;       // optional
   taxClearance: number;
   garbage: number;
-  garbageCollection: string; // new field
-  polluters: string;         // new field
-  Occupation: string;        // new field
+  garbageCollection: string;      // new
+  polluters: string;              // new
+  Occupation: string;             // new
   verification: number;
   weightAndMass: number;
   healthClearance: number;
@@ -30,13 +42,16 @@ export interface BusinessRecord {
   menro: number;
   docTax: number;
   eggsFee: number;
-  marketCertification: string; // new field
+  marketCertification: string;    // new
   surcharge25: number;
-  sucharge2: number; // renamed from surcharge5
-  miscellaneous: string; // new field
+  sucharge2: number;              // renamed from surcharge5
+  miscellaneous: string;          // new
   totalPayment: number;
   remarks: string;
-  frequency: 'quarterly' | 'semi-annual' | 'annual'; // new field for renewal frequency
-  renewed: boolean; // new field to indicate if the record has been renewed
-  Other?: string; // new field added for additional notes (optional)
+  frequency: 'quarterly' | 'semi-annual' | 'annual';
+  renewed: boolean;
+  Other?: string;                 // optional notes
+
+  // If you want to include the join‑table entries:
+  permits?: BusinessRecordPermit[];
 }

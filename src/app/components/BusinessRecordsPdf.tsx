@@ -31,7 +31,7 @@ const BusinessRecordsPdf: React.FC<BusinessRecordsPdfProps> = ({
     content: reactToPrintContent,
     // Some versions of react-to-print may expect a property named "contentRef".
     contentRef: printRef,
-    documentTitle: `${selectedBarangay} Business Records`,
+    documentTitle: ` Barangay ${selectedBarangay} Business Records`,
   } as any);
 
   return (
@@ -50,7 +50,7 @@ const BusinessRecordsPdf: React.FC<BusinessRecordsPdfProps> = ({
       */}
       <div ref={printRef} className="printableContent">
         <h2 className="text-2xl font-bold mb-4">
-          {selectedBarangay} Business Records
+          Barangay {selectedBarangay} Business Records
         </h2>
         <table className="w-full border-collapse">
           <thead>
@@ -73,8 +73,11 @@ const BusinessRecordsPdf: React.FC<BusinessRecordsPdfProps> = ({
                     }
                     return (
                       <td key={col.key} className="border px-2 py-1">
-                        {value}
-                      </td>
+                      {col.key === "totalPayment"
+                        ? `₱${parseFloat(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`
+                        : value}
+                    </td>
+                    
                     );
                   })}
                 </tr>

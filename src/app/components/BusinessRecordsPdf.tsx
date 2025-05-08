@@ -67,17 +67,30 @@ const BusinessRecordsPdf: React.FC<BusinessRecordsPdfProps> = ({
               data.map((applicant: any) => (
                 <tr key={applicant.id}>
                   {tableColumns.map((col) => {
-                    let value: any = applicant[col.key] || "";
+                    let raw: any = applicant[col.key] ?? "";
+
+                    // handle date formatting if you still need it
                     if (col.key === "date" && col.format) {
-                      value = col.format(applicant.date);
+                      raw = col.format(applicant.date); 
                     }
+
+                    // unified money‐formatter
+                    const formatMoney = (val: any) =>
+                      `₱${parseFloat(val).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+
+                    // decide what to render
+                    const display =
+                      col.key === "gross" || col.key === "totalPayment"
+                        ? formatMoney(raw)
+                        : // respect any other custom formatter
+                        col.format
+                          ? col.format(raw)
+                          : raw;
+
                     return (
                       <td key={col.key} className="border px-2 py-1">
-                      {col.key === "totalPayment"
-                        ? `₱${parseFloat(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`
-                        : value}
-                    </td>
-                    
+                        {display}
+                      </td>
                     );
                   })}
                 </tr>
@@ -90,6 +103,7 @@ const BusinessRecordsPdf: React.FC<BusinessRecordsPdfProps> = ({
               </tr>
             )}
           </tbody>
+
         </table>
       </div>
 

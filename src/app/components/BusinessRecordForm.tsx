@@ -135,6 +135,7 @@ export default function BusinessRecordForm({
     { label: "Garbage Collection", name: "garbageCollection", type: "text" },
     { label: "Occupation", name: "Occupation", type: "text" },
     { label: "Polluters", name: "polluters", type: "text" },
+    { label: "Miscellaneous", name: "miscellaneous", type: "text" },
   ];
   const surchargesGroup = [
     { label: "25% Surcharge", name: "surcharge25", type: "text" },
@@ -144,7 +145,7 @@ export default function BusinessRecordForm({
     { label: "Total Payment", name: "totalPayment", type: "text" },
     { label: "Remarks", name: "remarks", type: "text" },
     { label: "Other", name: "Other", type: "textarea" },
-    { label: "Miscellaneous", name: "miscellaneous", type: "text" },
+
   ];
 
   // ─── Helpers ───────────────────────────────────────────────
@@ -155,6 +156,7 @@ export default function BusinessRecordForm({
     return dt.toISOString().split("T")[0];
   };
   const parseNum = (v: string) => parseFloat(v.replace(/,/g, ""));
+
 
   const getInit = (): Record<string, string> => {
     const rec = record || {};
@@ -295,20 +297,20 @@ export default function BusinessRecordForm({
       })),
     };
     // **Always include gross** (even if empty → 0)
-    payload.gross = parseNum(formData.gross || "0"); 
+    payload.gross = parseNum(formData.gross || "0");
     console.log("🚀 submitting payload:", payload);
     const textSet = new Set([
-      "applicantName","applicantAddress","businessName",
-      "natureOfBusiness","date","frequency","orNo",
-      "remarks","Other"
+      "applicantName", "applicantAddress", "businessName",
+      "natureOfBusiness", "date", "frequency", "orNo",
+      "remarks", "Other"
     ]);
 
     Object.entries(formData).forEach(([k, v]) => {
       if (k === "gross" || k === "renewed") return;  // already handled
       if (v === undefined || v === "") return;       // truly absent
-      if (textSet.has(k))      payload[k] = v;
-      else if (k === "year")   payload.year = parseInt(v, 10);
-      else                     payload[k] = parseNum(v);
+      if (textSet.has(k)) payload[k] = v;
+      else if (k === "year") payload.year = parseInt(v, 10);
+      else payload[k] = parseNum(v);
     });
 
     // ✅ Define URL and Method
@@ -349,7 +351,64 @@ export default function BusinessRecordForm({
     }
   };
 
+  // ─── Calculate totalPayment ───────────────────────────────────────
+  const calculateTotalPayment = (): number => {
+    const feeKeys: Array<keyof typeof formData> = [
+      'busTax', 'mayorsPermit', 'sanitaryInps', 'policeClearance',
+      'barangayClearance', 'zoningClearance', 'taxClearance', 'garbage',
+      'verification', 'weightAndMass', 'healthClearance', 'secFee',
+      'menro', 'docTax', 'eggsFee', 'marketCertification',
+      'garbageCollection', 'polluters', 'Occupation', 'miscellaneous',
+      'surcharge25', 'sucharge2',
+      'Other'     // ← now pick up every number inside “Other”
+    ];
 
+    // sum every number found in each field
+    const feesSum = feeKeys.reduce((sum, key) => {
+      const raw = String(formData[key] ?? '');
+      // find **all** numbers, including decimals or negatives
+      const matches = raw.match(/-?\d+(\.\d+)?/g);
+      // parse & sum them, or 0 if none
+      const fieldTotal = matches
+        ? matches.reduce((s, num) => s + parseFloat(num), 0)
+        : 0;
+      return sum + fieldTotal;
+    }, 0);
+
+    // your permits are already numeric, so just sum them
+    const permitsSum = selectedPermits.reduce((sum, p) => {
+      const n = parseFloat(p.amount) || 0;
+      return sum + n;
+    }, 0);
+
+    return feesSum + permitsSum;
+  };
+
+  // ―― watch every field (including “Other”) ――
+  useEffect(() => {
+    const newTotal = calculateTotalPayment();
+    // extract old total’s number too
+    const oldMatch = String(formData.totalPayment).match(/-?\d+(\.\d+)?/g);
+    const oldTotal = oldMatch
+      ? oldMatch.reduce((s, num) => s + parseFloat(num), 0)
+      : 0;
+
+    if (oldTotal !== newTotal) {
+      setFormData(f => ({ ...f, totalPayment: String(newTotal) }));
+    }
+  }, [
+    formData.busTax, formData.mayorsPermit, formData.sanitaryInps,
+    formData.policeClearance, formData.barangayClearance,
+    formData.zoningClearance, formData.taxClearance, formData.garbage,
+    formData.verification, formData.weightAndMass, formData.healthClearance,
+    formData.secFee, formData.menro, formData.docTax, formData.eggsFee,
+    formData.marketCertification, formData.garbageCollection,
+    formData.polluters, formData.Occupation, formData.miscellaneous,
+    formData.surcharge25, formData.sucharge2, formData.Other,
+    selectedPermits
+  ]);
+
+  // ────────────────────────────────────────────────────────────────────────────────────
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-12 flex justify-center">
       <div className="w-full max-w-6xl bg-white shadow-lg rounded-2xl overflow-hidden">
@@ -521,8 +580,19 @@ export default function BusinessRecordForm({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {totalsGroup.map((inp) => (
                   <div key={inp.name} className="flex flex-col">
-                    <label className="mb-2 font-medium text-gray-700">{inp.label}</label>
-                    {inp.type === "textarea" ? (
+                    <label className="mb-2 font-medium text-gray-700">
+                      {inp.label}
+                    </label>
+
+                    {inp.name === "totalPayment" ? (
+                      <input
+                        type="text"
+                        name="totalPayment"
+                        value={formData.totalPayment || ""}
+                        readOnly
+                        className="w-full px-5 py-3 text-base border border-gray-300 rounded-xl bg-gray-100 cursor-not-allowed"
+                      />
+                    ) : inp.type === "textarea" ? (
                       <textarea
                         name={inp.name}
                         value={formData[inp.name] || ""}

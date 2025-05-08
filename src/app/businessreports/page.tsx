@@ -380,14 +380,25 @@ export default function BusinessReportsPage() {
     <div className="min-h-screen bg-gray-50">
       <Topbar />
       <NavBar />
-      <div className="mt-8 mb-6">
-        <Link
-          href="/"
-          className="inline-flex items-center bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-700 transition duration-200 ease-in-out"
-        >
-          &larr; Back to Dashboard
-        </Link>
+      <div className="mt-8 mb-6 px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+          <Link
+            href="/"
+            className="inline-flex items-center bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-700 transition duration-200 ease-in-out"
+          >
+            &larr; Back to Dashboard
+          </Link>
+
+          <Link
+            href="/businessreports/list"
+            className="inline-flex items-center bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-500 transition duration-200 ease-in-out"
+          >
+            View Report List
+          </Link>
+        </div>
       </div>
+
+
       <main className="max-w-6xl mx-auto px-4 py-8">
         <header className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800">

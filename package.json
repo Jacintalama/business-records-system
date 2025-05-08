@@ -24,7 +24,7 @@
     "react-datepicker": "^8.3.0",
     "react-dom": "^19.0.0",
     "react-icons": "^5.5.0",
-    "react-to-print": "^3.0.6",
+    "react-to-print": "^3.1.0",
     "react-toastify": "^11.0.5",
     "select2": "^4.1.0-rc.0",
     "sequelize": "^6.37.6",

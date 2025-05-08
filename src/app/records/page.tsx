@@ -78,6 +78,8 @@ interface Column {
   key: keyof PaymentRecord | 'expiredDate' | 'permits';
   label: string;
   format?: (val: any) => string;
+  sorter?: (a: PaymentRecord, b: PaymentRecord) => number;
+  defaultSortOrder?: 'ascend' | 'descend';
 }
 // Money sign peso
 const phpFormatter = new Intl.NumberFormat('en-PH', {     // <- notice plain '-' here
@@ -88,14 +90,39 @@ const phpFormatter = new Intl.NumberFormat('en-PH', {     // <- notice plain '-'
 });
 // end
 
+// at top of your file, above columnGroups
+const collapseLines = (val: any): string =>
+  String(val)
+    .split(/\r?\n+/)      // split on any line‐break
+    .map(s => s.trim())   // trim each piece
+    .filter(Boolean)      // drop empty
+    .join(' / ')          // rejoin with “ / ”
+
 const columnGroups: { label: string; columns: Column[] }[] = [
   {
     label: 'Basic Info',
     columns: [
       { key: 'year', label: 'Year' },
-      { key: 'date', label: 'Date', format: v => new Date(v).toLocaleDateString() },
-      { key: 'gross', label: 'Gross' },
-      { key: 'orNo', label: 'OR No.' },
+      {
+        key: 'date',
+        label: 'Date',
+        format: v => new Date(v).toLocaleDateString(),
+        sorter: (a: PaymentRecord, b: PaymentRecord) =>
+          new Date(a.date).getTime() - new Date(b.date).getTime(),
+        defaultSortOrder: 'ascend',
+      },
+      { key: 'gross', label: 'Gross', format: v => phpFormatter.format(Number(v)) },
+      {
+        key: 'orNo',
+        label: 'OR No.',
+        // 1) collapse any new-lines into a single " / "
+        format: (raw: any) =>
+          String(raw)
+            .split(/\r?\n+/)            // break on any line-break
+            .map(s => s.trim())         // trim each piece
+            .filter(Boolean)            // drop empty strings
+            .join(' / '),               // re-join with a space-slash-space
+      },
     ]
   },
   // ← New “Permits” group:
@@ -104,14 +131,15 @@ const columnGroups: { label: string; columns: Column[] }[] = [
     columns: [
       {
         key: 'permits',
-        label: `Mayor’s Permits`,
+        label: 'Mayor’s Permits',
         format: (perms: PaymentRecord['permits']) => {
-          if (!Array.isArray(perms) || perms.length === 0) return '—';
-          return perms
-            .map(p =>
-              `${p.name} (${phpFormatter.format(p.BusinessRecordPermit.amount)})`
-            )
-            .join(', ');
+          if (!Array.isArray(perms) || perms.length === 0) return '—'
+          // build your comma‐list
+          const text = perms
+            .map(p => `${p.name} (${phpFormatter.format(p.BusinessRecordPermit.amount)})`)
+            .join(', ')
+          // then collapse any accidental line‐breaks
+          return collapseLines(text)
         }
       }
     ]
@@ -119,43 +147,43 @@ const columnGroups: { label: string; columns: Column[] }[] = [
   {
     label: 'Fees & Clearances',
     columns: [
-      { key: 'busTax', label: 'BUS TAX' },
-      { key: 'mayorsPermit', label: "Mayor's Permit" },
-      { key: 'sanitaryInps', label: 'Sanitary Inps' },
-      { key: 'policeClearance', label: 'Police Clearance' },
-      { key: 'barangayClearance', label: 'Barangay Clearance' },
-      { key: 'zoningClearance', label: 'Zoning Clearance' },
-      { key: 'taxClearance', label: 'Tax Clearance' },
-      { key: 'garbage', label: 'Garbage' },
-      { key: 'verification', label: 'Verification' },
-      { key: 'weightAndMass', label: 'Weight & Mass' },
-      { key: 'healthClearance', label: 'Health Clearance' },
-      { key: 'secFee', label: 'SEC Fee' },
-      { key: 'menro', label: 'MENRO' },
-      { key: 'docTax', label: 'Doc Tax' },
-      { key: 'eggsFee', label: "Egg's Fee" },
+      { key: 'busTax', label: 'BUS TAX', format: v => phpFormatter.format(Number(v)) },
+      { key: 'mayorsPermit', label: "Mayor's Permit", format: v => phpFormatter.format(Number(v)) },
+      { key: 'sanitaryInps', label: 'Sanitary Inps', format: v => phpFormatter.format(Number(v)) },
+      { key: 'policeClearance', label: 'Police Clearance', format: v => phpFormatter.format(Number(v)) },
+      { key: 'barangayClearance', label: 'Barangay Clearance', format: v => phpFormatter.format(Number(v)) },
+      { key: 'zoningClearance', label: 'Zoning Clearance', format: v => phpFormatter.format(Number(v)) },
+      { key: 'taxClearance', label: 'Tax Clearance', format: v => phpFormatter.format(Number(v)) },
+      { key: 'garbage', label: 'Garbage', format: v => phpFormatter.format(Number(v)) },
+      { key: 'verification', label: 'Verification', format: v => phpFormatter.format(Number(v)) },
+      { key: 'weightAndMass', label: 'Weight & Mass', format: v => phpFormatter.format(Number(v)) },
+      { key: 'healthClearance', label: 'Health Clearance', format: v => phpFormatter.format(Number(v)) },
+      { key: 'secFee', label: 'SEC Fee', format: v => phpFormatter.format(Number(v)) },
+      { key: 'menro', label: 'MENRO', format: v => phpFormatter.format(Number(v)) },
+      { key: 'docTax', label: 'Doc Tax', format: v => phpFormatter.format(Number(v)) },
+      { key: 'eggsFee', label: "Egg's Fee", format: v => phpFormatter.format(Number(v)) },
     ],
   },
   {
     label: 'Surcharges',
     columns: [
-      { key: 'surcharge25', label: '25% Surcharge' },
-      { key: 'sucharge2', label: '2% Month' },
+      { key: 'surcharge25', label: '25% Surcharge', format: v => phpFormatter.format(Number(v)) },
+      { key: 'sucharge2', label: '2% Month', format: v => phpFormatter.format(Number(v)) },
     ],
   },
   {
     label: 'Additional Details',
     columns: [
-      { key: 'garbageCollection', label: 'Garbage Collection' },
-      { key: 'polluters', label: 'Polluters' },
-      { key: 'Occupation', label: 'Occupation' },
+      { key: 'garbageCollection', label: 'Garbage Collection', format: v => phpFormatter.format(Number(v)) },
+      { key: 'polluters', label: 'Polluters', format: v => phpFormatter.format(Number(v)) },
+      { key: 'Occupation', label: 'Occupation', format: v => phpFormatter.format(Number(v)) },
     ],
   },
   {
     label: 'Additional Info',
     columns: [
-      { key: 'marketCertification', label: 'Market Certification' },
-      { key: 'miscellaneous', label: 'Miscellaneous' },
+      { key: 'marketCertification', label: 'Market Certification', format: v => phpFormatter.format(Number(v)) },
+      { key: 'miscellaneous', label: 'Miscellaneous', format: v => phpFormatter.format(Number(v)) },
     ],
   },
   {
@@ -181,18 +209,11 @@ const columnGroups: { label: string; columns: Column[] }[] = [
       {
         key: 'Other',
         label: 'Other',
-        format: (val: any) => {
-          if (!val || typeof val !== 'string') return '—';
-          // split on commas, trim, re-join with comma+space
-          return val
-            .split(',')
-            .map(s => s.trim())
-            .filter(s => s.length > 0)
-            .join(', ');
-        }
+        format: collapseLines
       }
     ],
   },
+
   {
     label: 'Expiration',
     columns: [
@@ -307,19 +328,38 @@ export default function ReportPage() {
   }
 
   const applicantIdParam = searchParams.get('applicantId');
-  const storedApplicantId = typeof window !== 'undefined' ? localStorage.getItem('applicantId') : '';
+  const storedApplicantId = typeof window !== 'undefined'
+    ? localStorage.getItem('applicantId')
+    : '';
   const initialApplicantId =
-    applicantIdParam && applicantIdParam !== 'undefined' && applicantIdParam !== 'null'
+    applicantIdParam &&
+      applicantIdParam !== 'undefined' &&
+      applicantIdParam !== 'null'
       ? applicantIdParam
       : storedApplicantId || '';
 
   const [localApplicantId, setLocalApplicantId] = useState<string>(initialApplicantId);
+  // ─── sync localApplicantId with any URL changes ────────────────────
+  useEffect(() => {
+    const param = searchParams.get('applicantId');
+    if (
+      param &&
+      param !== 'undefined' &&
+      param !== 'null' &&
+      param !== localApplicantId
+    ) {
+      setLocalApplicantId(param);
+      localStorage.setItem('applicantId', param);
+    }
+  }, [searchParams.toString(), localApplicantId]);
+  // ──────────────────────────────────────────────────────────────────
+
   const applicantNameParam = searchParams.get('applicantName') || '';
   const applicantAddressParam = searchParams.get('applicantAddress') || '';
 
   const [records, setRecords] = useState<PaymentRecord[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const pageSize = 20;
   const [showForm, setShowForm] = useState(false);
   const [editRecord, setEditRecord] = useState<Partial<PaymentRecord> | null>(null);
 
@@ -336,6 +376,57 @@ export default function ReportPage() {
       setSelectedPermits([]);
     }
   }, [editRecord]);
+  // ─── Auto-recalculate totalPayment in Edit form ─────────────────
+  useEffect(() => {
+    if (!editRecord) return;
+
+    // same fee-fields you use in calculateTotalPayment
+    const feeKeys: Array<keyof PaymentRecord> = [
+      'busTax', 'sanitaryInps', 'policeClearance', 'barangayClearance',
+      'zoningClearance', 'taxClearance', 'garbage', 'verification',
+      'weightAndMass', 'healthClearance', 'secFee', 'menro', 'docTax',
+      'eggsFee', 'marketCertification', 'garbageCollection',
+      'polluters', 'Occupation', 'miscellaneous', 'surcharge25', 'sucharge2',
+      'Other'
+    ];
+
+    // sum all numbers found in each fee-field
+    const feesSum = feeKeys.reduce((sum, key) => {
+      const raw = String((editRecord as any)[key] ?? '');
+      const nums = raw.match(/-?\d+(\.\d+)?/g) ?? [];
+      return sum + nums.reduce((s, n) => s + parseFloat(n), 0);
+    }, 0);
+
+    // sum up the edited permits
+    const permitsSum = selectedPermits.reduce(
+      (s, p) => s + (parseFloat(p.amount) || 0),
+      0
+    );
+
+    const newTotal = feesSum + permitsSum;
+
+    // only update if it really changed
+    if (parseFloat(editRecord.totalPayment as string) !== newTotal) {
+      setEditRecord(prev => prev
+        ? { ...prev, totalPayment: String(newTotal) }
+        : prev
+      );
+    }
+  }, [
+    editRecord,
+    // individually watch each fee-field so TS/Hooks know when it changes:
+    editRecord?.busTax, editRecord?.sanitaryInps, editRecord?.policeClearance,
+    editRecord?.barangayClearance, editRecord?.zoningClearance,
+    editRecord?.taxClearance, editRecord?.garbage, editRecord?.verification,
+    editRecord?.weightAndMass, editRecord?.healthClearance,
+    editRecord?.secFee, editRecord?.menro, editRecord?.docTax,
+    editRecord?.eggsFee, editRecord?.marketCertification,
+    editRecord?.garbageCollection, editRecord?.polluters,
+    editRecord?.Occupation, editRecord?.miscellaneous,
+    editRecord?.surcharge25, editRecord?.sucharge2, editRecord?.Other,
+    selectedPermits
+  ]);
+  // ────────────────────────────────────────────────────────────────
 
   // Updated initial form data now includes natureOfBusiness
   const [formData, setFormData] = useState({
@@ -375,7 +466,19 @@ export default function ReportPage() {
     Occupation: '',
     Other: '',
   });
-
+  // whenever we open the “Add New Record” form, pre-fill it
+  useEffect(() => {
+    if (showForm && ownerInfo) {
+      setFormData(prev => ({
+        ...prev,
+        applicantName: ownerInfo.applicantName,
+        applicantAddress: ownerInfo.address,
+        businessName: ownerInfo.businessName,
+        natureOfBusiness: ownerInfo.natureOfBusiness,
+        capitalInvestment: ownerInfo.capitalInvestment,
+      }));
+    }
+  }, [showForm, ownerInfo]);
   // When ownerInfo changes, copy it to tempOwnerInfo for inline editing
   useEffect(() => {
     if (ownerInfo) {
@@ -435,15 +538,27 @@ export default function ReportPage() {
       if (applicantAddressParam) {
         url += `applicantAddress=${encodeURIComponent(applicantAddressParam)}&`;
       }
+
       const res = await fetch(url, { credentials: 'include' });
       if (!res.ok) {
         throw new Error(`Failed to fetch: ${res.statusText}`);
       }
       const data = await res.json();
-      const sortedRecords = data.records.sort((a: PaymentRecord, b: PaymentRecord) => b.year - a.year);
+
+      // ─── Sort logic changed ENTIRELY ─────────────────────────────────────
+      const sortedRecords = data.records.sort((a: PaymentRecord, b: PaymentRecord) => {
+        // 1) newest year first
+        if (b.year !== a.year) {
+          return b.year - a.year;
+        }
+        // 2) within same year, newest date first
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      });
+      // ────────────────────────────────────────────────────────────────────
+
       setRecords(sortedRecords);
 
-      if (sortedRecords?.length > 0 && sortedRecords[0].applicant) {
+      if (sortedRecords.length > 0 && sortedRecords[0].applicant) {
         const app = sortedRecords[0].applicant;
         const info: OwnerInfo = {
           applicantName: app.applicantName,
@@ -463,15 +578,28 @@ export default function ReportPage() {
     }
   }, [localApplicantId, applicantNameParam, applicantAddressParam, API_URL]);
 
+
+
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, searchParams.toString()]);
+
 
   const uniqueRecords = Array.from(new Map(records.map((r) => [r.id, r])).values());
   const totalPages = Math.ceil(uniqueRecords.length / pageSize);
   const startIndex = (currentPage - 1) * pageSize;
   const currentRecords = uniqueRecords.slice(startIndex, startIndex + pageSize);
 
+  // ←—— 
+  const tableColumns = columnGroups.flatMap(group =>
+    group.columns.map(col => ({
+      title: col.label,
+      dataIndex: col.key,
+      render: col.format,
+      sorter: col.sorter,
+      defaultSortOrder: col.defaultSortOrder
+    }))
+  );
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -479,6 +607,74 @@ export default function ReportPage() {
   // helper to turn "14,240.15" → 14240.15
   const parseNumber = (value: string) =>
     parseFloat(value.replace(/,/g, ''));
+
+  // ─── Helpers ──────────────────────────────────────────────────────
+  // fallback-friendly parse
+  const parseNum = (v: string) => parseFloat(v.replace(/,/g, "")) || 0;
+
+  // pull the first numeric substring out of any string
+  const extractNumber = (s: string): number => {
+    const m = s.match(/-?\d+(\.\d+)?/);
+    return m ? parseNum(m[0]) : 0;
+  };
+
+  // ─── Calculate totalPayment ───────────────────────────────────────
+  const calculateTotalPayment = (): number => {
+    const feeKeys: Array<keyof typeof formData> = [
+      'busTax', 'mayorsPermit', 'sanitaryInps', 'policeClearance',
+      'barangayClearance', 'zoningClearance', 'taxClearance', 'garbage',
+      'verification', 'weightAndMass', 'healthClearance', 'secFee',
+      'menro', 'docTax', 'eggsFee', 'marketCertification',
+      'garbageCollection', 'polluters', 'Occupation', 'miscellaneous',
+      'surcharge25', 'sucharge2',
+      'Other'     // ← now pick up every number inside “Other”
+    ];
+
+    // sum every number found in each field
+    const feesSum = feeKeys.reduce((sum, key) => {
+      const raw = String(formData[key] ?? '');
+      // find **all** numbers, including decimals or negatives
+      const matches = raw.match(/-?\d+(\.\d+)?/g);
+      // parse & sum them, or 0 if none
+      const fieldTotal = matches
+        ? matches.reduce((s, num) => s + parseFloat(num), 0)
+        : 0;
+      return sum + fieldTotal;
+    }, 0);
+
+    // your permits are already numeric, so just sum them
+    const permitsSum = selectedPermits.reduce((sum, p) => {
+      const n = parseFloat(p.amount) || 0;
+      return sum + n;
+    }, 0);
+
+    return feesSum + permitsSum;
+  };
+
+  // ―― watch every field (including “Other”) ――
+  useEffect(() => {
+    const newTotal = calculateTotalPayment();
+    // extract old total’s number too
+    const oldMatch = String(formData.totalPayment).match(/-?\d+(\.\d+)?/g);
+    const oldTotal = oldMatch
+      ? oldMatch.reduce((s, num) => s + parseFloat(num), 0)
+      : 0;
+
+    if (oldTotal !== newTotal) {
+      setFormData(f => ({ ...f, totalPayment: String(newTotal) }));
+    }
+  }, [
+    formData.busTax, formData.mayorsPermit, formData.sanitaryInps,
+    formData.policeClearance, formData.barangayClearance,
+    formData.zoningClearance, formData.taxClearance, formData.garbage,
+    formData.verification, formData.weightAndMass, formData.healthClearance,
+    formData.secFee, formData.menro, formData.docTax, formData.eggsFee,
+    formData.marketCertification, formData.garbageCollection,
+    formData.polluters, formData.Occupation, formData.miscellaneous,
+    formData.surcharge25, formData.sucharge2, formData.Other,
+    selectedPermits
+  ]);
+
 
   const handleFormSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -495,7 +691,7 @@ export default function ReportPage() {
           amount: parseNumber(p.amount) || 0,
         })),
       };
-    
+
       const res = await fetch(`${API_URL}/api/business-record`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -506,22 +702,26 @@ export default function ReportPage() {
         const data = await res.json();
         toast.success('Record added successfully!', { position: 'top-right', autoClose: 3000 });
 
-        if (!localApplicantId && data.record) {
+        if (data.record) {
           const newInfo: OwnerInfo = {
             applicantName: data.record.applicantName,
             address: data.record.applicantAddress,
             businessName: data.record.businessName,
             natureOfBusiness: data.record.natureOfBusiness || '',
-            capitalInvestment: data.record.capitalInvestment,
+            capitalInvestment: String(data.record.capitalInvestment),
             applicantId: data.record.applicantId,
           };
           setOwnerInfo(newInfo);
-          setLocalApplicantId(data.record.applicantId);
-          localStorage.setItem('applicantId', data.record.applicantId);
-          const currentUrl = new URL(window.location.href);
-          currentUrl.searchParams.set('applicantId', data.record.applicantId);
-          window.history.replaceState(null, '', currentUrl.toString());
+
+          if (!localApplicantId) {
+            setLocalApplicantId(data.record.applicantId);
+            localStorage.setItem('applicantId', data.record.applicantId);
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('applicantId', data.record.applicantId);
+            window.history.replaceState(null, '', currentUrl.toString());
+          }
         }
+
 
         setFormData({
           applicantName: '',
@@ -933,28 +1133,21 @@ export default function ReportPage() {
                   >
                     {columnGroups.flatMap(group =>
                       group.columns.map(col => {
-                        // 1️⃣ Compute displayValue
                         let displayValue: React.ReactNode;
                         if (col.key === 'expiredDate') {
-                          displayValue = computePeriodEnd(
-                            record.date,
-                            record.frequency
-                          ).toLocaleDateString();
+                          displayValue = computePeriodEnd(record.date, record.frequency)
+                            .toLocaleDateString();
                         } else {
                           const raw = (record as any)[col.key] ?? '';
                           displayValue = col.format ? col.format(raw) : raw;
                         }
 
-                        // 2️⃣ Choose classes: no pre-line anywhere
-                        const isPermits = col.key === 'permits';
-                        const isOther = col.key === 'Other';
-                        const tdClass = isPermits
-                          ? 'px-4 py-2 text-gray-700 whitespace-nowrap min-w-[250px]'
-                          : isOther
-                            ? 'px-4 py-2 text-gray-700 whitespace-nowrap'
-                            : 'px-4 py-2 text-gray-700 overflow-hidden whitespace-normal';
+                        const isNoWrap = ['orNo', 'permits', 'Other'].includes(col.key as string);
+                        const tdClass = [
+                          'px-4 py-2 text-gray-700',
+                          isNoWrap ? 'whitespace-nowrap' : 'overflow-hidden whitespace-normal',
+                        ].join(' ');
 
-                        // 3️⃣ Render
                         return (
                           <td key={`${record.id}-${col.key}`} className={tdClass}>
                             {displayValue}
@@ -962,6 +1155,10 @@ export default function ReportPage() {
                         );
                       })
                     )}
+
+
+
+
 
                     {/* Actions column */}
                     <td className="px-4 py-2 text-center no-print">
@@ -1046,12 +1243,11 @@ export default function ReportPage() {
                       <div key={input.name}>
                         <label className="block font-medium text-gray-700">{input.label}</label>
                         <input
-                          type={input.type}
-                          name={input.name}
-                          value={(formData as any)[input.name]}
-                          onChange={handleInputChange}
-                          className="border p-2 w-full"
-                          placeholder={`Enter ${input.label}`}
+                          type="text"
+                          name="totalPayment"
+                          value={(formData as any).totalPayment}
+                          readOnly
+                          className="border p-2 w-full bg-gray-100 cursor-not-allowed"
                         />
                       </div>
                     ))}
@@ -1088,13 +1284,23 @@ export default function ReportPage() {
                   { label: 'Occupation', name: 'Occupation', type: 'text' },
                   { label: 'Other', name: 'Other', type: 'textarea' },
                   { label: 'Miscellaneous', name: 'miscellaneous', type: 'text' },
-                  { label: 'Total Payment', name: 'totalPayment', type: 'text' },
+                  { label: 'Total Payment', name: 'totalPayment', type: 'text', readOnly: true },
                   { label: 'Remarks', name: 'remarks', type: 'text' },
                   { label: 'Frequency', name: 'frequency', type: 'select' },
                 ].map((input) => (
                   <div key={input.name}>
                     <label className="block font-medium text-gray-700">{input.label}</label>
-                    {input.type === 'select' ? (
+
+                    {/*** Inject this check first ***/}
+                    {input.name === 'totalPayment' ? (
+                      <input
+                        type="text"
+                        name="totalPayment"
+                        value={(formData as any).totalPayment}
+                        readOnly
+                        className="border p-2 w-full bg-gray-100 cursor-not-allowed"
+                      />
+                    ) : input.type === 'select' ? (
                       <select
                         name={input.name}
                         value={(formData as any)[input.name]}
@@ -1213,7 +1419,18 @@ export default function ReportPage() {
                 ].map((input) => (
                   <div key={input.name}>
                     <label className="block font-medium text-gray-700">{input.label}</label>
-                    {input.type === 'select' ? (
+
+                    {/* Total Payment should be read-only */}
+                    {input.name === 'totalPayment' ? (
+                      <input
+                        type="text"
+                        name="totalPayment"
+                        value={(editRecord as any).totalPayment || ''}
+                        readOnly
+                        disabled
+                        className="border p-2 w-full bg-gray-100 cursor-not-allowed"
+                      />
+                    ) : input.type === 'select' ? (
                       <select
                         name={input.name}
                         value={(editRecord as any)[input.name] || ''}

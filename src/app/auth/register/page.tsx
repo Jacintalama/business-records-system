@@ -41,7 +41,8 @@ const GapathaCaptcha = ({ verified, onVerify }: GapathaCaptchaProps) => {
       ) : (
         <span className="flex items-center space-x-2">
           <FaPuzzlePiece className="text-gray-700" />
-          <span className="text-gray-700">I'm not a robot</span>
+          {/* Escaped apostrophe here */}
+          <span className="text-gray-700">I&apos;m not a robot</span>
         </span>
       )}
     </div>
@@ -124,7 +125,6 @@ export default function RegisterPage() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setUserData((prev) => ({ ...prev, [name]: value }));
-    // If field has been touched, update its error message
     if (touched[name]) {
       const errorMsg = validateField(name, value);
       setErrors((prev) => ({ ...prev, [name]: errorMsg }));

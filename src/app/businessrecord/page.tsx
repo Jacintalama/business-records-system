@@ -1,7 +1,7 @@
   "use client";
 
   import { useState, useEffect, ChangeEvent } from "react";
-  import { useSearchParams, useRouter, usePathname } from "next/navigation";
+  import { useSearchParams, useRouter } from "next/navigation";
   import Link from "next/link";
   import Select from "react-select";
   import { toast, ToastContainer } from "react-toastify";
@@ -125,7 +125,7 @@
 
   export default function BusinessRecordsPage() {
 
-    const pathname = usePathname();
+
     const searchParams = useSearchParams();
     const router = useRouter();
 
@@ -161,10 +161,7 @@
     // This function use to force refresh
     const [version] = useState(0);
 
-    useEffect(() => {
-      fetchApplicants(selectedBarangay);
-    }, [pathname, selectedBarangay]);
-    
+
 
 
     useEffect(() => {

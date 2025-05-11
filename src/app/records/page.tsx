@@ -1358,7 +1358,7 @@ export default function ReportPage() {
                   </div>
                 );
               })}
-              {/* ───────────────────────────────────────────────────────────── */}
+
               <div className="mt-4 flex justify-end">
                 <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
                   Submit
@@ -1368,7 +1368,7 @@ export default function ReportPage() {
           </div>
         </div>
       )}
-
+      {/* ───────────────────────────────────────────────────────────── */}
       {/* EDIT RECORD MODAL */}
       {editRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-300 bg-opacity-50 overflow-y-auto no-print">

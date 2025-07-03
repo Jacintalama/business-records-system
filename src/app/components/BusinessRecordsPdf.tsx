@@ -13,7 +13,7 @@ interface TableColumn {
 interface BusinessRecordsPdfProps {
   selectedBarangay: string;
   tableColumns: TableColumn[];
-  data: any[]; // Replace with a proper type for your applicant data if available.
+  data: any[];
 }
 
 const BusinessRecordsPdf: React.FC<BusinessRecordsPdfProps> = ({
@@ -22,16 +22,11 @@ const BusinessRecordsPdf: React.FC<BusinessRecordsPdfProps> = ({
   data,
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
-
-  // Stable callback returning the print ref.
   const reactToPrintContent = useCallback(() => printRef.current, []);
-
-  // Cast options to any if TypeScript complains.
   const handlePrint = useReactToPrint({
     content: reactToPrintContent,
-    // Some versions of react-to-print may expect a property named "contentRef".
     contentRef: printRef,
-    documentTitle: ` Barangay ${selectedBarangay} Business Records`,
+    documentTitle: `Barangay ${selectedBarangay} Business Records`,
   } as any);
 
   return (
@@ -43,16 +38,11 @@ const BusinessRecordsPdf: React.FC<BusinessRecordsPdfProps> = ({
         <FaFilePdf className="inline-block mr-2" /> Print PDF
       </button>
 
-      {/* 
-        The following div contains the printable content.
-        It is hidden off-screen during normal viewing (via the CSS class), 
-        but is forced to display properly when printing.
-      */}
       <div ref={printRef} className="printableContent">
         <h2 className="text-2xl font-bold mb-4">
           Barangay {selectedBarangay} Business Records
         </h2>
-        <table className="w-full border-collapse">
+        <table className="w-full border-collapse table-fixed">
           <thead>
             <tr>
               {tableColumns.map((col) => (
@@ -67,26 +57,20 @@ const BusinessRecordsPdf: React.FC<BusinessRecordsPdfProps> = ({
               data.map((applicant: any) => (
                 <tr key={applicant.id}>
                   {tableColumns.map((col) => {
-                    let raw: any = applicant[col.key] ?? "";
-
-                    // handle date formatting if you still need it
+                    let raw = applicant[col.key] ?? "";
                     if (col.key === "date" && col.format) {
-                      raw = col.format(applicant.date); 
+                      raw = col.format(applicant.date);
                     }
-
-                    // unified money‐formatter
                     const formatMoney = (val: any) =>
-                      `₱${parseFloat(val).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
-
-                    // decide what to render
+                      `₱${parseFloat(val)
+                        .toFixed(2)
+                        .replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
                     const display =
                       col.key === "gross" || col.key === "totalPayment"
                         ? formatMoney(raw)
-                        : // respect any other custom formatter
-                        col.format
-                          ? col.format(raw)
-                          : raw;
-
+                        : col.format
+                        ? col.format(raw)
+                        : raw;
                     return (
                       <td key={col.key} className="border px-2 py-1">
                         {display}
@@ -103,11 +87,9 @@ const BusinessRecordsPdf: React.FC<BusinessRecordsPdfProps> = ({
               </tr>
             )}
           </tbody>
-
         </table>
       </div>
 
-      {/* Global styles to control the visibility of the printable content */}
       <style jsx global>{`
         @media screen {
           .printableContent {
@@ -118,13 +100,39 @@ const BusinessRecordsPdf: React.FC<BusinessRecordsPdfProps> = ({
             pointer-events: none;
           }
         }
+
         @media print {
+          /* make the hidden container visible */
           .printableContent {
             position: static;
             top: 0;
             left: 0;
             opacity: 1;
             pointer-events: auto;
+          }
+
+          /* ensure the table spans full width and header repeats */
+          .printableContent table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            page-break-after: auto;
+          }
+
+          /* repeat the header on each page */
+          .printableContent thead {
+            display: table-header-group;
+          }
+
+          /* if you have a footer, you can repeat it too */
+          .printableContent tfoot {
+            display: table-footer-group;
+          }
+
+          /* avoid breaking rows across pages */
+          .printableContent tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
           }
         }
       `}</style>

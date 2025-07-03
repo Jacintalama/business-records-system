@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, ChangeEvent, FormEvent, useCallback } from 'react';
+import { useState, useEffect, ChangeEvent, FormEvent, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -10,6 +10,9 @@ import { FaEdit, FaTrash, FaFilePdf, FaCheck } from 'react-icons/fa';
 import Topbar from '../components/Topbar';
 import { computePeriodEnd } from '../utils/periodUtils';
 import Select, { MultiValue } from 'react-select'
+// Capital Letter Function
+const capitalize = (s: string) =>
+  s.charAt(0).toUpperCase() + s.slice(1);
 
 interface MPOption { value: number; label: string }
 interface SelectedPermit { mayorPermitId: number; amount: string }
@@ -27,6 +30,7 @@ interface OwnerInfo {
 }
 
 interface PaymentRecord {
+  [key: string]: any;
   id: number;
   year: number;
   date: string;
@@ -48,6 +52,7 @@ interface PaymentRecord {
   eggsFee: string;
   surcharge25: string;
   sucharge2: string;
+  expired: boolean;
   totalPayment: string;
   remarks: string;
   frequency: 'quarterly' | 'semi-annual' | 'annual';
@@ -93,10 +98,12 @@ const phpFormatter = new Intl.NumberFormat('en-PH', {     // <- notice plain '-'
 // at top of your file, above columnGroups
 const collapseLines = (val: any): string =>
   String(val)
-    .split(/\r?\n+/)      // split on any line‐break
-    .map(s => s.trim())   // trim each piece
-    .filter(Boolean)      // drop empty
-    .join(' / ')          // rejoin with “ / ”
+    .replace(/[\r\n]+/g, ' ')           // replace line breaks with space
+    .replace(/\s*\(\s*/g, ' (')         // ensure single space before '('
+    .replace(/\s*\)\s*/g, ')')          // trim spaces around ')'
+    .replace(/\s{2,}/g, ' ')            // collapse multiple spaces
+    .trim();
+
 
 const columnGroups: { label: string; columns: Column[] }[] = [
   {
@@ -187,32 +194,42 @@ const columnGroups: { label: string; columns: Column[] }[] = [
     ],
   },
   {
-    label: 'Totals & Remarks',
-    columns: [
-      {
-        key: 'totalPayment',
-        label: 'Total Payment',
-        format: (val) => phpFormatter.format(Number(val)),
-      },
-      { key: 'remarks', label: 'Remarks' },
-      { key: 'frequency', label: 'Frequency' },
-      {
-        key: 'renewed',
-        label: 'Renewed',
-        format: (val) => (val ? 'Yes' : 'No'),
-      },
-    ],
-  },
-  {
-    label: 'Others',
-    columns: [
-      {
-        key: 'Other',
-        label: 'Other',
-        format: collapseLines
-      }
-    ],
-  },
+      label: 'Totals & Remarks',
+      columns: [
+        {
+          key: 'totalPayment',
+          label: 'Total Payment',
+          format: val => phpFormatter.format(Number(val)),
+        },
+        { key: 'remarks', 
+          label: 'Remarks',
+          format: collapseLines
+        
+        },
+        {
+          key: 'frequency',
+          label: 'Frequency',
+          format: (val: any) =>
+            typeof val === 'string' ? capitalize(val) : val,
+        },
+        {
+          key: 'renewed',
+          label: 'Renewed',
+          format: val => (val ? 'Yes' : 'No'),
+          
+        },
+      ],
+    },
+    {
+      label: 'Others',
+      columns: [
+        {
+          key: 'Other',
+          label: 'Other',
+          format: collapseLines
+        }
+      ],
+    },
 
   {
     label: 'Expiration',
@@ -245,6 +262,7 @@ const isRecordDelinquent = (record: PaymentRecord): boolean => {
 };
 
 export default function ReportPage() {
+
 
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -359,30 +377,49 @@ export default function ReportPage() {
 
   const [records, setRecords] = useState<PaymentRecord[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 20;
+  const pageSize = 100;
   const [showForm, setShowForm] = useState(false);
   const [editRecord, setEditRecord] = useState<Partial<PaymentRecord> | null>(null);
 
-  // ─── 3) **Here**: seed selectedPermits when editRecord changes ───
+
+  // ✅ only runs when the record ID changes (i.e. when you first click “Edit”)
   useEffect(() => {
-    if (editRecord?.permits?.length) {
-      setSelectedPermits(
-        editRecord.permits.map(p => ({
-          mayorPermitId: p.id,
-          amount: String(p.BusinessRecordPermit.amount)
-        }))
-      );
-    } else {
-      setSelectedPermits([]);
-    }
-  }, [editRecord]);
+    // 1) if editRecord is null OR has no id → bail out
+    if (!editRecord || editRecord.id == null) return;
+
+    // 2) at this point TS knows editRecord is not null and has an id
+    const permits = editRecord.permits ?? [];
+    setSelectedPermits(
+      permits.map(p => ({
+        mayorPermitId: p.id,
+        amount: String(p.BusinessRecordPermit.amount),
+      }))
+    );
+  }, [editRecord?.id]);
+
   // ─── Auto-recalculate totalPayment in Edit form ─────────────────
+
+  const hasInitializedPermits = useRef(false);
+  // Sync permits from editRecord on edit load
+  useEffect(() => {
+    if (editRecord && editRecord.permits && !hasInitializedPermits.current) {
+      const mappedPermits = editRecord.permits.map(permit => ({
+        mayorPermitId: permit.id,
+        name: permit.name,
+        amount: String(permit.BusinessRecordPermit?.amount || '0'),
+      }));
+      setSelectedPermits(mappedPermits);
+      hasInitializedPermits.current = true;
+    }
+  }, [editRecord]); 
+
+
+  // Recalculate totalPayment when fees or permits change
   useEffect(() => {
     if (!editRecord) return;
 
-    // same fee-fields you use in calculateTotalPayment
-    const feeKeys: Array<keyof PaymentRecord> = [
-      'busTax', 'sanitaryInps', 'policeClearance', 'barangayClearance',
+    const feeKeys: (keyof PaymentRecord)[] = [
+      'busTax', 'mayorsPermit', 'sanitaryInps', 'policeClearance', 'barangayClearance',
       'zoningClearance', 'taxClearance', 'garbage', 'verification',
       'weightAndMass', 'healthClearance', 'secFee', 'menro', 'docTax',
       'eggsFee', 'marketCertification', 'garbageCollection',
@@ -390,42 +427,42 @@ export default function ReportPage() {
       'Other'
     ];
 
-    // sum all numbers found in each fee-field
-    const feesSum = feeKeys.reduce((sum, key) => {
-      const raw = String((editRecord as any)[key] ?? '');
-      const nums = raw.match(/-?\d+(\.\d+)?/g) ?? [];
-      return sum + nums.reduce((s, n) => s + parseFloat(n), 0);
+    const feesSum = feeKeys.reduce((sum: number, key) => {
+      const rawValue = editRecord[key];
+      const rawString = typeof rawValue === 'string' ? rawValue : '';
+      const numbersInString = rawString.match(/-?\d+(\.\d+)?/g) ?? [];
+      const subtotal = numbersInString.reduce((subSum, n) => subSum + parseFloat(n), 0);
+      return sum + subtotal;
     }, 0);
 
-    // sum up the edited permits
-    const permitsSum = selectedPermits.reduce(
-      (s, p) => s + (parseFloat(p.amount) || 0),
-      0
-    );
+    const permitsSum = selectedPermits.reduce((sum: number, permit) => {
+      const amount = typeof permit.amount === 'number'
+        ? permit.amount
+        : parseFloat(String(permit.amount)) || 0;
+      return sum + amount;
+    }, 0);
 
     const newTotal = feesSum + permitsSum;
+    const currentTotal = parseFloat(editRecord.totalPayment ?? '0');
 
-    // only update if it really changed
-    if (parseFloat(editRecord.totalPayment as string) !== newTotal) {
-      setEditRecord(prev => prev
-        ? { ...prev, totalPayment: String(newTotal) }
-        : prev
+    if (currentTotal !== newTotal) {
+      setEditRecord(prev =>
+        prev ? { ...prev, totalPayment: newTotal.toFixed(2) } : prev
       );
     }
   }, [
-    editRecord,
-    // individually watch each fee-field so TS/Hooks know when it changes:
+    // all fee fields of editRecord as deps
     editRecord?.busTax, editRecord?.sanitaryInps, editRecord?.policeClearance,
-    editRecord?.barangayClearance, editRecord?.zoningClearance,
-    editRecord?.taxClearance, editRecord?.garbage, editRecord?.verification,
-    editRecord?.weightAndMass, editRecord?.healthClearance,
-    editRecord?.secFee, editRecord?.menro, editRecord?.docTax,
-    editRecord?.eggsFee, editRecord?.marketCertification,
-    editRecord?.garbageCollection, editRecord?.polluters,
-    editRecord?.Occupation, editRecord?.miscellaneous,
-    editRecord?.surcharge25, editRecord?.sucharge2, editRecord?.Other,
-    selectedPermits
+    editRecord?.barangayClearance, editRecord?.zoningClearance, editRecord?.taxClearance,
+    editRecord?.garbage, editRecord?.verification, editRecord?.weightAndMass,
+    editRecord?.healthClearance, editRecord?.secFee, editRecord?.menro,
+    editRecord?.docTax, editRecord?.eggsFee, editRecord?.marketCertification,
+    editRecord?.garbageCollection, editRecord?.polluters, editRecord?.Occupation,
+    editRecord?.miscellaneous, editRecord?.surcharge25, editRecord?.sucharge2,
+    editRecord?.Other,
+    selectedPermits // also depend on permits so it recalculates on permit change
   ]);
+
   // ────────────────────────────────────────────────────────────────
 
   // Updated initial form data now includes natureOfBusiness
@@ -620,36 +657,36 @@ export default function ReportPage() {
 
   // ─── Calculate totalPayment ───────────────────────────────────────
   const calculateTotalPayment = (): number => {
-    const feeKeys: Array<keyof typeof formData> = [
+    const source = editRecord ?? formData; // ← fallback to formData for create mode
+
+    const feeKeys: Array<keyof typeof source> = [
       'busTax', 'mayorsPermit', 'sanitaryInps', 'policeClearance',
       'barangayClearance', 'zoningClearance', 'taxClearance', 'garbage',
       'verification', 'weightAndMass', 'healthClearance', 'secFee',
       'menro', 'docTax', 'eggsFee', 'marketCertification',
       'garbageCollection', 'polluters', 'Occupation', 'miscellaneous',
-      'surcharge25', 'sucharge2',
-      'Other'     // ← now pick up every number inside “Other”
+      'surcharge25', 'sucharge2', 'Other'
     ];
 
-    // sum every number found in each field
-    const feesSum = feeKeys.reduce((sum, key) => {
-      const raw = String(formData[key] ?? '');
-      // find **all** numbers, including decimals or negatives
-      const matches = raw.match(/-?\d+(\.\d+)?/g);
-      // parse & sum them, or 0 if none
-      const fieldTotal = matches
-        ? matches.reduce((s, num) => s + parseFloat(num), 0)
-        : 0;
-      return sum + fieldTotal;
+    const feesSum = feeKeys.reduce((sum: number, key) => {
+      const rawValue = source[key];
+      const rawString = typeof rawValue === 'string' ? rawValue : '';
+      const numbersInString = rawString.match(/-?\d+(\.\d+)?/g) ?? [];
+      const subtotal = numbersInString.reduce((subSum, n) => subSum + parseFloat(n), 0);
+      return sum + subtotal;
     }, 0);
 
-    // your permits are already numeric, so just sum them
-    const permitsSum = selectedPermits.reduce((sum, p) => {
-      const n = parseFloat(p.amount) || 0;
-      return sum + n;
+    const permitsSum = selectedPermits.reduce((sum: number, permit) => {
+      const amount = typeof permit.amount === 'number'
+        ? permit.amount
+        : parseFloat(String(permit.amount)) || 0;
+      return sum + amount;
     }, 0);
 
     return feesSum + permitsSum;
   };
+
+
 
   // ―― watch every field (including “Other”) ――
   useEffect(() => {
@@ -724,6 +761,7 @@ export default function ReportPage() {
 
 
         setFormData({
+
           applicantName: '',
           applicantAddress: '',
           businessName: '',
@@ -774,7 +812,17 @@ export default function ReportPage() {
 
   const handleEditRecord = (record: PaymentRecord) => {
     setEditRecord(record);
+
+    // record.permits is optional, so default to []
+    setSelectedPermits(
+      (record.permits ?? []).map(p => ({
+        mayorPermitId: p.id,
+        amount: String(p.BusinessRecordPermit.amount),
+      }))
+    );
   };
+
+
 
   const handleEditFormSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -820,13 +868,50 @@ export default function ReportPage() {
     }
   };
 
+  const feeFields = [
+    'busTax',
+    'mayorsPermit',
+    'sanitaryInps',
+    'policeClearance',
+    'barangayClearance',
+    'zoningClearance',
+    'taxClearance',
+    'garbage',
+    'verification',
+    'weightAndMass',
+    'healthClearance',
+    'secFee',
+    'menro',
+    'docTax',
+    'eggsFee',
+    'marketCertification',
+    'surcharge25',
+    'sucharge2',
+    'miscellaneous',
+    'garbageCollection',
+    'polluters',
+  ];
 
   const handleEditInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const target = e.target as HTMLInputElement;
     const { name, type, value } = target;
     const newValue = type === 'checkbox' ? target.checked : value;
-    setEditRecord((prev) => ({ ...prev, [name]: newValue }));
+
+    setEditRecord(prev => {
+      const updatedRecord = { ...prev, [name]: newValue };
+
+      // ✅ Only recalculate totalPayment if the field is a fee
+      if (feeFields.includes(name)) {
+        const newTotal = feeFields.reduce((sum, field) => {
+          return sum + (parseFloat(updatedRecord[field]) || 0);
+        }, 0);
+        updatedRecord.totalPayment = newTotal.toFixed(2); // Optional: format to 2 decimals
+      }
+
+      return updatedRecord;
+    });
   };
+
 
   const handleDeleteRecord = async (recordId: number) => {
     if (!confirm('Are you sure you want to delete this record?')) return;
@@ -851,55 +936,71 @@ export default function ReportPage() {
   const handlePdfPrint = () => {
     window.print();
   };
+  // 1) flatten all columns
+  const flatCols = columnGroups.flatMap(g => g.columns);
+
+  // 2) drop the expiredDate column for printing only
+  const printCols = flatCols.filter(col => col.key !== 'expiredDate');
+
+  // 3) split into pages of N columns
+  const colsPerPage = 8;   // tweak until it looks right
+
+  // <— use Column[][] here
+  const pages: Column[][] = [];
+
+  for (let i = 0; i < printCols.length; i += colsPerPage) {
+    pages.push(printCols.slice(i, i + colsPerPage));
+  }
+
 
   return (
     <div>
       {/* Global Print Styles */}
       <style jsx global>{`
-            @media print {
-              .no-print {
-                display: none !important;
-              }
-              html, body {
-                margin: 0;
-                padding: 0;
-                font-size: 11px;
-              }
-              .print-container {
-                width: 100%;
-              }
-              table {
-                width: 100% !important;
-                border-collapse: collapse;
-                table-layout: auto;
-              }
-              table, th, td {
-                border: 1px solid #000;
-              }
-              th, td {
-                padding: 6px;
-                text-align: left;
-                white-space: normal !important;
-                word-wrap: break-word;
-              }
-              td:nth-child(1),
-              td:nth-child(2),
-              td:nth-child(3) {
-                font-size: 13px !important;
-                font-weight: 600;
-              }
-              .overflow-x-auto {
-                overflow: visible !important;
-              }
-              thead {
-                position: static !important;
-                display: table-header-group;
-              }
-              tr {
-                page-break-inside: avoid;
-              }
-            }
-          `}</style>
+  @media print {
+    /* long bond landscape */
+    @page { size: 13in 8.5in; margin: 1cm; }
+
+    /* hide everything you don’t want */
+    .no-print, .top-bar { display: none !important; }
+    .overflow-x-auto { overflow: visible !important; }
+
+    /* basic typography */
+    body, table, th, td {
+      font-family: Arial, "Segoe UI", sans-serif !important;
+      font-size: 11px;
+      -webkit-print-color-adjust: exact;
+    }
+
+    /* scale down slightly if you overflow */
+    .print-container {
+      width: 100%; transform: scale(0.98); transform-origin: top left;
+    }
+
+    /* each .print-page becomes one sheet */
+    .print-page { page-break-after: always; }
+
+    /* tables full-width, no squeezing */
+    table {
+      width: 100% !important;
+      border-collapse: collapse;
+      table-layout: auto;
+    }
+    thead { display: table-header-group; }
+    tr    { page-break-inside: avoid; break-inside: avoid; }
+
+    th, td {
+      border: 1px solid #000 !important;
+      padding: 6px !important;
+      white-space: normal !important;
+      word-wrap: break-word;
+    }
+  }
+`}</style>
+
+
+
+
 
       {/* Topbar hidden during print */}
       <div className="no-print">
@@ -919,6 +1020,7 @@ export default function ReportPage() {
           &larr; Back to Business Records
         </Link>
       </div>
+
 
       <div className="w-[95%] mx-auto my-8 print-container">
         {/* Header / Logo */}
@@ -1090,8 +1192,16 @@ export default function ReportPage() {
           </button>
         </div>
 
+        {/* Watermark on screen and print */}
+        {currentRecords.some(record => record.expired) && (
+          <div className="watermark-print">
+            RETIRED
+          </div>
+        )}
+
         {/* Table */}
-        <div className="w-full sm:rounded-lg border border-gray-200 overflow-x-auto">
+
+        <div className="w-full sm:rounded-lg border border-gray-200 overflow-x-auto print:hidden">
           <table className="min-w-full table-auto text-sm text-left text-gray-500">
             <thead className="bg-gray-50">
               <tr>
@@ -1142,16 +1252,19 @@ export default function ReportPage() {
                           displayValue = col.format ? col.format(raw) : raw;
                         }
 
-                        const isNoWrap = ['orNo', 'permits', 'Other'].includes(col.key as string);
+                        const isNoWrap = ['orNo', 'permits', 'Other', 'remarks'].includes(col.key as string);
                         const tdClass = [
-                          'px-4 py-2 text-gray-700',
-                          isNoWrap ? 'whitespace-nowrap' : 'overflow-hidden whitespace-normal',
+                          'px-4 py-2 h-12 text-gray-700',           // <-- added h-12
+                          isNoWrap
+                            ? 'whitespace-nowrap'
+                            : 'overflow-hidden whitespace-normal',
                         ].join(' ');
 
                         return (
                           <td key={`${record.id}-${col.key}`} className={tdClass}>
-                            {displayValue}
-                          </td>
+                          <span className="inline-block w-full">{displayValue}</span>
+                        </td>
+                        
                         );
                       })
                     )}
@@ -1186,7 +1299,40 @@ export default function ReportPage() {
           </table>
         </div>
 
+        {/* ─── PRINT (only when printing) ─── */}
+        <div className="print-container hidden print:block">
+          {pages.map((cols, pageIdx) => (
+            <div key={pageIdx} className="print-page">
+              <table className="min-w-full table-auto text-sm text-left text-gray-500">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {cols.map(col => (
+                      <th key={col.key} className="px-4 py-2 border-b border-gray-300">
+                        {col.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {currentRecords.map(record => (
+                    <tr key={`${record.id}-${pageIdx}`} className={`relative ${isRecordDelinquent(record) ? 'expired-row' : ''}`}>
 
+                      {cols.map(col => {
+                        const raw = (record as any)[col.key] ?? '';
+                        const val = col.format ? col.format(raw) : raw;
+                        return (
+                          <td key={`${record.id}-${col.key}`} className="px-4 py-2">
+                            {val}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
 
         {totalPages > 1 && (
           <div className="flex justify-center mt-4 space-x-2 no-print">
@@ -1332,32 +1478,88 @@ export default function ReportPage() {
                 ))}
               </div>
               {/* ─── Mayor’s Permits & Fees ───────────────────────────────── */}
-              <h3 className="text-2xl font-semibold my-4">Mayor’s Permits & Fees</h3>
-              <Select
-                isMulti
-                options={mpOptions}
-                value={mpOptions.filter(o =>
-                  selectedPermits.some(p => p.mayorPermitId === o.value)
-                )}
-                onChange={opts => handlePermitsChange(opts as MultiValue<MPOption>)}
-                className="w-full mb-4"
-              />
-              {selectedPermits.map(p => {
-                const label = mpOptions.find(o => o.value === p.mayorPermitId)?.label ?? '';
-                return (
-                  <div key={p.mayorPermitId} className="flex items-center mb-2 space-x-4">
-                    <span className="w-1/2">{label}</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={p.amount}
-                      onChange={e => handlePermitAmountChange(p.mayorPermitId, e.target.value)}
-                      placeholder="Amount"
-                      className="w-1/4 p-2 border rounded"
-                    />
+              <div className="space-y-4">
+                {/* Section Label */}
+                <h3 className="text-2xl font-semibold my-4">Mayor’s Permits & Fees</h3>
+
+                {/* Multi-select with search */}
+                <Select
+                  isMulti
+                  options={mpOptions}
+                  value={mpOptions.filter(o =>
+                    selectedPermits.some(p => p.mayorPermitId === o.value)
+                  )}
+                  onChange={opts => handlePermitsChange(opts as MultiValue<MPOption>)}
+                  placeholder="Type to search permits..."
+                  className="w-full mb-2"
+                  classNamePrefix="react-select"
+                  styles={{
+                    control: base => ({ ...base, borderRadius: '0.5rem', padding: '2px' }),
+                  }}
+                />
+
+                {/* Table only shows once you’ve picked at least one */}
+                {selectedPermits.length > 0 && (
+                  <div className="bg-white shadow rounded-lg overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Permit
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Amount (₱)
+                          </th>
+                          <th className="px-6 py-3 w-24 text-center text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Remove
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100">
+                        {selectedPermits.map(p => {
+                          const label =
+                            mpOptions.find(o => o.value === p.mayorPermitId)?.label || "";
+                          return (
+                            <tr key={p.mayorPermitId}>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                                {label}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={p.amount}
+                                  onChange={e =>
+                                    handlePermitAmountChange(p.mayorPermitId, e.target.value)
+                                  }
+                                  className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                  placeholder="0.00"
+                                />
+
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-center">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSelectedPermits(old =>
+                                      old.filter(item => item.mayorPermitId !== p.mayorPermitId)
+                                    )
+                                  }
+                                  className="text-red-500 hover:text-red-700"
+                                >
+                                  &times;
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                );
-              })}
+                )}
+              </div>
+
 
               <div className="mt-4 flex justify-end">
                 <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
@@ -1492,43 +1694,86 @@ export default function ReportPage() {
               </div>
 
               {/* ─── Mayor’s Permits & Fees (Edit) ─────────────────────────── */}
-              <h3 className="text-2xl font-semibold my-4">Mayor’s Permits & Fees</h3>
-              <div className="mb-4">
+              <div className="space-y-4">
+                {/* Section Label */}
+                <h3 className="text-2xl font-semibold my-4">Mayor’s Permits & Fees</h3>
+
+                {/* Multi-select with search */}
                 <Select
                   isMulti
                   options={mpOptions}
                   value={mpOptions.filter(o =>
                     selectedPermits.some(p => p.mayorPermitId === o.value)
                   )}
-                  onChange={opts =>
-                    handlePermitsChange(opts as MultiValue<MPOption>)
-                  }
-                  placeholder="Select permits…"
-                  className="w-full"
+                  onChange={opts => handlePermitsChange(opts as MultiValue<MPOption>)}
+                  placeholder="Type to search permits..."
+                  className="w-full mb-2"
+                  classNamePrefix="react-select"
+                  styles={{
+                    control: base => ({ ...base, borderRadius: '0.5rem', padding: '2px' }),
+                  }}
                 />
-              </div>
-              {selectedPermits.map(p => {
-                const label =
-                  mpOptions.find(o => o.value === p.mayorPermitId)?.label || '';
-                return (
-                  <div
-                    key={p.mayorPermitId}
-                    className="flex items-center mb-2 space-x-4"
-                  >
-                    <span className="w-1/2">{label}</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={p.amount}
-                      onChange={e =>
-                        handlePermitAmountChange(p.mayorPermitId, e.target.value)
-                      }
-                      placeholder="Amount"
-                      className="w-1/4 p-2 border rounded"
-                    />
+
+                {/* Table only shows once you’ve picked at least one */}
+                {selectedPermits.length > 0 && (
+                  <div className="bg-white shadow rounded-lg overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Permit
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Amount (₱)
+                          </th>
+                          <th className="px-6 py-3 w-24 text-center text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Remove
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100">
+                        {selectedPermits.map(p => {
+                          const label =
+                            mpOptions.find(o => o.value === p.mayorPermitId)?.label || "";
+                          return (
+                            <tr key={p.mayorPermitId}>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                                {label}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                              <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={p.amount}
+                                  onChange={e =>
+                                    handlePermitAmountChange(p.mayorPermitId, e.target.value)
+                                  }
+                                  className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                  placeholder="0.00"
+                                />
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-center">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSelectedPermits(old =>
+                                      old.filter(item => item.mayorPermitId !== p.mayorPermitId)
+                                    )
+                                  }
+                                  className="text-red-500 hover:text-red-700"
+                                >
+                                  &times;
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                );
-              })}
+                )}
+              </div>
               {/* ───────────────────────────────────────────────────────────── */}
 
               <div className="mt-4 flex justify-end">

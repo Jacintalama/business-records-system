@@ -155,6 +155,7 @@ const columnGroups = [
 // BusinessReportsPage: Now the report shows the overall Business Tax data alongside a pumpboat count (boat count).
 //
 export default function BusinessReportsPage() {
+  
   const router = useRouter();
   const searchParams = useSearchParams();
 

@@ -510,33 +510,84 @@ export default function BusinessRecordForm({
 
             {/* Step 3: Permits */}
             {step === 3 && (
-              <>
+              <div className="space-y-4">
+                {/* Section Label */}
+                <label className="block text-gray-700 font-semibold">
+                  Search & Add Mayors Permits
+                </label>
+
+                {/* Multi-select with search */}
                 <Select
                   isMulti
                   options={mpOptions}
-                  value={mpOptions.filter((o) =>
-                    selectedPermits.some((p) => p.mayorPermitId === o.value)
+                  value={mpOptions.filter(o =>
+                    selectedPermits.some(p => p.mayorPermitId === o.value)
                   )}
-                  onChange={(opts) => handlePermitsChange(opts as MultiValue<MPOption>)}
-                  className="mb-4"
+                  onChange={opts => handlePermitsChange(opts as MultiValue<MPOption>)}
+                  placeholder="Type to search permits..."
+                  className="mb-2"
+                  classNamePrefix="react-select"
+                  styles={{
+                    control: base => ({ ...base, borderRadius: '0.5rem', padding: '2px' }),
+                  }}
                 />
-                {selectedPermits.map((p) => {
-                  const label = mpOptions.find((o) => o.value === p.mayorPermitId)?.label || "";
-                  return (
-                    <div key={p.mayorPermitId} className="flex items-center space-x-4 mb-3">
-                      <span className="w-1/2 text-gray-700">{label}</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={p.amount}
-                        onChange={(e) => handlePermitAmountChange(p.mayorPermitId, e.target.value)}
-                        placeholder="Amount"
-                        className="w-32 px-4 py-2 text-base border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-500"
-                      />
-                    </div>
-                  );
-                })}
-              </>
+
+                {/* Only show table once at least one permit is selected */}
+                {selectedPermits.length > 0 && (
+                  <div className="bg-white shadow rounded-lg overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Permit
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Amount (₱)
+                          </th>
+                          <th className="px-6 py-3 w-24 text-center text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Remove
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100">
+                        {selectedPermits.map(p => {
+                          const label = mpOptions.find(o => o.value === p.mayorPermitId)?.label || "";
+                          return (
+                            <tr key={p.mayorPermitId}>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                                {label}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={p.amount}
+                                  onChange={e => handlePermitAmountChange(p.mayorPermitId, e.target.value)}
+                                  className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                  placeholder="0.00"
+                                />
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-center">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSelectedPermits(old =>
+                                      old.filter(item => item.mayorPermitId !== p.mayorPermitId)
+                                    )
+                                  }
+                                  className="text-red-500 hover:text-red-700"
+                                >
+                                  &times;
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Step 4: Additional */}

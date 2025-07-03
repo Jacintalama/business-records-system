@@ -28,42 +28,92 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 */
+.watermark-print {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  font-size: 12rem;
+  font-weight: 900;
+  color: rgba(255, 0, 0, 0.15);
+  pointer-events: none;
+  user-select: none;
+  z-index: 9999;
+  white-space: nowrap;
+  text-transform: uppercase;
+  display: block;
+}
 
 @media print {
+
+  
+  
+  /* page setup */
   @page {
-    size: 13in 8.5in; /* Landscape long bond: width x height */
+    size: 13in 8.5in;   /* long bond landscape */
     margin: 1cm;
   }
 
-  /* ✅ Ensures ₱ symbol renders properly */
+  /* ensure your Arial/peso font renders */
   body, table, th, td {
     font-family: Arial, "Segoe UI", sans-serif !important;
   }
-  
-
   body {
     -webkit-print-color-adjust: exact;
     font-size: 11px;
   }
 
+  /* hide non-print UI */
   .no-print,
   .top-bar {
     display: none !important;
   }
 
+  /* scale if you need a tiny downsize */
   .print-container {
     width: 100%;
-    transform: scale(0.98); /* Adjust if content overflows */
+    transform: scale(0.98);
     transform-origin: top left;
   }
 
-  table {
+  /* keep the H2 and first header on the same page */
+  .print-container h2 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* TABLE LAYOUT */
+  .print-container table {
     width: 100% !important;
     border-collapse: collapse;
     table-layout: auto;
-    page-break-inside: avoid;
+    /* allow page breaks between rows, not inside */
+    page-break-inside: auto;
+    break-inside: avoid;
+    page-break-before: auto;
+    break-before: auto;
+    page-break-after: auto;
+    break-after: auto;
   }
 
+  /* force the header/footer to repeat */
+  .print-container thead {
+    display: table-header-group;
+  }
+  .print-container tfoot {
+    display: table-footer-group;
+  }
+  .print-container tbody {
+    display: table-row-group;
+  }
+
+  /* prevent splitting any single row */
+  .print-container tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* cell styling */
   th, td {
     border: 1px solid #000;
     padding: 6px;
@@ -72,26 +122,17 @@ body {
     word-wrap: break-word;
   }
 
-  thead {
-    display: table-header-group;
-  }
-
-  tr {
-    page-break-inside: avoid;
-  }
-
+  /* optional styling for logos/labels */
   img.print-logo {
     max-width: 200px;
     height: auto;
     object-fit: contain;
   }
-
   .print-label {
     font-size: 16px !important;
     font-weight: 800 !important;
     color: black !important;
   }
-
   .print-value {
     font-size: 14px !important;
     font-weight: 500;

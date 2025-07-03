@@ -52,7 +52,7 @@ export default function ReportListPage() {
 
     // ── Pagination ─────────────────────────────────────────────────────
     const [currentPage, setCurrentPage] = useState(1);
-    const rowsPerPage = 10;
+    const rowsPerPage = 50;
 
     // ── Fetch data ────────────────────────────────────────────────────
     useEffect(() => {
@@ -104,10 +104,20 @@ export default function ReportListPage() {
     ]);
 
     // ── Build dynamic nature options ───────────────────────────────────
-    const natureOptions = [
-        "all",
-        ...Array.from(new Set(rawRecords.map(r => r.natureOfBusiness).filter(n => n)))
-    ];
+    const normalizedNatureMap = new Map<string, string>();
+
+    rawRecords.forEach(r => {
+        const raw = r.natureOfBusiness?.trim();
+        if (raw) {
+            const key = raw.toLowerCase(); // normalize
+            if (!normalizedNatureMap.has(key)) {
+                normalizedNatureMap.set(key, raw); // preserve original casing for display
+            }
+        }
+    });
+    
+    const natureOptions = ["all", ...Array.from(normalizedNatureMap.values())];
+    
 
     // ── Final filtered + paginated records ────────────────────────────
     const filteredRecords = rawRecords.filter(rec => {
@@ -115,7 +125,11 @@ export default function ReportListPage() {
         if (selectedStatus === "new" && rec.remarks.toLowerCase() === "renew") return false;
         if (selectedStatus === "renew" && rec.remarks.toLowerCase() !== "renew") return false;
         // Nature
-        if (selectedNature !== "all" && rec.natureOfBusiness !== selectedNature) return false;
+        if (
+            selectedNature !== "all" &&
+            rec.natureOfBusiness.trim().toLowerCase() !== selectedNature.trim().toLowerCase()
+        ) return false;
+        
         // Frequency
         if (selectedFrequency !== "all" && rec.frequency !== selectedFrequency) return false;
         return true;

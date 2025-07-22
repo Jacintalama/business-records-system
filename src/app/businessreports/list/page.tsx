@@ -9,7 +9,7 @@ import { FaFilePdf } from "react-icons/fa";
 
 // List of barangays
 const barangays = [
-    "Amsipit", "Bales", "Colon", "Daliao", "Kabatiol", "Kablacan",
+    "Overall", "Amsipit", "Bales", "Colon", "Daliao", "Kabatiol", "Kablacan",
     "Kamanga", "Kanalo", "Lumatil", "Lumasal", "Malbang", "Nomoh",
     "Pananag", "Poblacion", "Public Market", "Seven Hills", "Tinoto"
 ];
@@ -36,6 +36,7 @@ interface ApplicantRecord {
     orNo: string;
     totalPayment: string;
     frequency: string; // "quarterly" | "semi-annual" | "annual"
+    renewed: boolean; // ✅ add this
 }
 
 export default function ReportListPage() {
@@ -54,18 +55,43 @@ export default function ReportListPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const rowsPerPage = 50;
 
-    // ── Fetch data ────────────────────────────────────────────────────
     useEffect(() => {
         async function fetchList() {
             setLoading(true);
             try {
-                const res = await fetch(
-                    `http://192.168.1.107:3000/api/business-record?barangay=${encodeURIComponent(selectedBarangay)}`,
-                    { credentials: "include" }
-                );
-                if (!res.ok) throw new Error(res.statusText);
-                const data = await res.json();
-                const mapped: ApplicantRecord[] = (data.records || []).map((r: any) => ({
+                let allRecords: any[] = [];
+
+                if (selectedBarangay === "Overall") {
+                    // Fetch from all individual barangays
+                    const individualBarangays = barangays.filter(b => b !== "Overall");
+
+                    const fetchPromises = individualBarangays.map(b =>
+                        fetch(
+                            `http://192.168.1.107:3000/api/business-record?barangay=${encodeURIComponent(b)}`,
+                            { credentials: "include" }
+                        ).then(res => res.json())
+                    );
+
+                    const results = await Promise.all(fetchPromises);
+
+                    results.forEach(data => {
+                        if (Array.isArray(data.records)) {
+                            allRecords.push(...data.records);
+                        }
+                    });
+                } else {
+                    // Fetch from selected barangay only
+                    const res = await fetch(
+                        `http://192.168.1.107:3000/api/business-record?barangay=${encodeURIComponent(selectedBarangay)}`,
+                        { credentials: "include" }
+                    );
+                    if (!res.ok) throw new Error(res.statusText);
+                    const data = await res.json();
+                    allRecords = Array.isArray(data.records) ? data.records : [];
+                }
+
+                // Map and filter the records
+                const mapped: ApplicantRecord[] = allRecords.map((r: any) => ({
                     id: String(r.id),
                     date: r.date ?? new Date().toISOString(),
                     applicantName: r.applicant.applicantName,
@@ -77,19 +103,32 @@ export default function ReportListPage() {
                     orNo: r.orNo || "",
                     totalPayment: String(r.totalPayment),
                     frequency: r.frequency,
+                    renewed: r.renewed ?? false,
                 }));
-                // only year filter here; the rest in filteredRecords
-                setRawRecords(
-                    mapped.filter(rec => new Date(rec.date).getFullYear() === selectedYear)
+                const deduped = Array.from(
+                    new Map(
+                        mapped.map(item => [
+                            `${item.applicantName}-${item.businessName}-${item.date}-${item.orNo}-${item.natureOfBusiness}`,
+                            item
+                        ])
+                    ).values()
                 );
-            } catch {
+
+
+                setRawRecords(
+                    deduped.filter(rec => new Date(rec.date).getFullYear() === selectedYear)
+                );
+            } catch (error) {
+                console.error("Error fetching business records:", error);
                 setRawRecords([]);
             } finally {
                 setLoading(false);
             }
         }
+
         fetchList();
     }, [selectedYear, selectedBarangay]);
+
 
     // reset to first page when any filter changes
     useEffect(() => {
@@ -115,9 +154,9 @@ export default function ReportListPage() {
             }
         }
     });
-    
+
     const natureOptions = ["all", ...Array.from(normalizedNatureMap.values())];
-    
+
 
     // ── Final filtered + paginated records ────────────────────────────
     const filteredRecords = rawRecords.filter(rec => {
@@ -129,11 +168,30 @@ export default function ReportListPage() {
             selectedNature !== "all" &&
             rec.natureOfBusiness.trim().toLowerCase() !== selectedNature.trim().toLowerCase()
         ) return false;
-        
+
         // Frequency
         if (selectedFrequency !== "all" && rec.frequency !== selectedFrequency) return false;
         return true;
     });
+
+    // ── Analytics for selected nature ────────────────────────
+    const selectedNatureLabel = selectedNature === "all" ? null : selectedNature.toLowerCase();
+
+    const natureBreakdown = selectedNatureLabel
+        ? barangays
+            .filter(b => b !== "Overall")
+            .map(brgy => {
+                const count = filteredRecords.filter(
+                    rec =>
+                        rec.applicantAddress.toLowerCase().includes(brgy.toLowerCase()) &&
+                        rec.natureOfBusiness.toLowerCase() === selectedNatureLabel
+                ).length;
+                return { barangay: brgy, count };
+            })
+            .filter(entry => entry.count > 0)
+        : [];
+
+    const totalNatureCount = natureBreakdown.reduce((sum, b) => sum + b.count, 0);
 
     const totalPages = Math.ceil(filteredRecords.length / rowsPerPage);
     const paginated = filteredRecords.slice(
@@ -214,7 +272,6 @@ export default function ReportListPage() {
                             ))}
                         </select>
                     </div>
-
                     {/* Barangay */}
                     <div>
                         <label className="block mb-1 font-medium">Barangay</label>
@@ -226,10 +283,13 @@ export default function ReportListPage() {
                             className="w-full p-2 border rounded"
                         >
                             {barangays.map(b => (
-                                <option key={b} value={b}>{b}</option>
+                                <option key={b} value={b}>
+                                    {b === "Overall" ? "All Barangays (Overall)" : b}
+                                </option>
                             ))}
                         </select>
                     </div>
+
 
                     {/* Status */}
                     <div>
@@ -276,6 +336,23 @@ export default function ReportListPage() {
                         </select>
                     </div>
                 </div>
+                {/* Filter for total of barangay business */}
+                {selectedBarangay === "Overall" && selectedNature !== "all" && (
+                    <div className="p-4 bg-white border rounded shadow-sm text-sm text-gray-800 space-y-2">
+                        <div>
+                            <strong>Total of "{selectedNature}" Businesses:</strong>{" "}
+                            <span className="font-bold">{totalNatureCount}</span>
+                        </div>
+                        <div className="space-y-1">
+                            <strong>Breakdown by Barangay:</strong>
+                            {natureBreakdown.map(entry => (
+                                <div key={entry.barangay} className="pl-4">
+                                    • {entry.barangay}: <strong>{entry.count}</strong>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Table + Pagination */}
                 <div className="bg-white rounded-xl shadow overflow-hidden">
@@ -334,9 +411,16 @@ export default function ReportListPage() {
                             <div>
                                 <strong>Nature of Business:</strong>{" "}
                                 <span className="font-semibold">
-                                    {selectedNature === "all" ? "All" : selectedNature}
+                                    {selectedNature === "all"
+                                        ? "All"
+                                        : `${selectedNature} (${selectedBarangay}) total of: ${rawRecords.filter(r =>
+                                            r.natureOfBusiness.trim().toLowerCase() === selectedNature.trim().toLowerCase()
+                                        ).length
+                                        }`
+                                    }
                                 </span>
                             </div>
+
                             <div>
                                 <strong>Frequency:</strong>{" "}
                                 <span className="font-semibold">
@@ -380,7 +464,7 @@ export default function ReportListPage() {
                                     ) : (
                                         paginated.map(rec => (
                                             <tr
-                                                key={rec.id}
+                                                key={`${rec.id}-${rec.date}`}
                                                 className="odd:bg-white even:bg-gray-50"
                                             >
                                                 <td className="px-4 py-2 text-center">
@@ -406,7 +490,8 @@ export default function ReportListPage() {
                                                 </td>
 
                                                 <td className="px-4 py-2 text-center">
-                                                    {rec.orNo}
+                                                    {rec.orNo.split('/').join(' / ')}
+
                                                 </td>
                                                 <td className="px-4 py-2 text-center">
                                                     {phpFormatter.format(Number(rec.totalPayment))}

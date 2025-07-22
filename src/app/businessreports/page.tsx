@@ -10,6 +10,7 @@ import {
   Tooltip,
   Legend,
   Title,
+  FontSpec,
 } from "chart.js";
 import ChartDataLabels from "chartjs-plugin-datalabels";
 import Link from "next/link";
@@ -155,7 +156,8 @@ const columnGroups = [
 // BusinessReportsPage: Now the report shows the overall Business Tax data alongside a pumpboat count (boat count).
 //
 export default function BusinessReportsPage() {
-  
+  const [delinquentCount, setDelinquentCount] = useState<number>(0);
+
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -207,62 +209,46 @@ export default function BusinessReportsPage() {
   useEffect(() => {
     async function fetchReports() {
       try {
+        let overallNew = 0;
+        let overallRenew = 0;
+        let overallDelinquent = 0;
+
         if (selectedBarangay === "Overall") {
-          // Exclude "Overall" from aggregation.
           const individualBarangays = barangays.filter((b) => b !== "Overall");
 
-          // Fetch overall data for each barangay
-          const overallPromises = individualBarangays.map((b) => {
-            const url = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(
-              b
-            )}`;
-            return fetch(url, { credentials: "include" }).then(async (response) => {
-              if (!response.ok) {
-                const errorText = await response.text();
-                console.error(
-                  `Failed to fetch report for ${b}:`,
-                  response.status,
-                  errorText
-                );
-                throw new Error(`Failed to fetch report for ${b}`);
-              }
-              return response.json();
-            });
+          const reportPromises = individualBarangays.map(async (b) => {
+            const url = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(b)}`;
+            const delinquentUrl = `${url}&delinquent=true`;
+
+            const [reportRes, delinquentRes] = await Promise.all([
+              fetch(url, { credentials: "include" }),
+              fetch(delinquentUrl, { credentials: "include" })
+            ]);
+
+            if (!reportRes.ok || !delinquentRes.ok) {
+              const errText = await reportRes.text();
+              console.error(`Failed to fetch report for ${b}:`, reportRes.status, errText);
+              throw new Error(`Failed to fetch report for ${b}`);
+            }
+
+            const reportData = await reportRes.json();
+            const delinquentData = await delinquentRes.json();
+
+            return {
+              new: reportData.businessTax?.new || 0,
+              renew: reportData.businessTax?.renew || 0,
+              delinquent: delinquentData.businessTax?.new || 0
+            };
           });
-          const overallResults = await Promise.all(overallPromises);
-          let overallNew = 0,
-            overallRenew = 0;
-          overallResults.forEach((result) => {
-            overallNew += result.businessTax?.new || 0;
-            overallRenew += result.businessTax?.renew || 0;
-          });
-          setOverallReportData({
-            businessTax: {
-              new: overallNew,
-              renew: overallRenew,
-              total: overallNew + overallRenew,
-            },
-          });
-        } else {
-          // Fetch for a specific barangay.
-          const baseUrl = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(
-            selectedBarangay
-          )}`;
-          const overallRes = await fetch(baseUrl, { credentials: "include" });
-          if (!overallRes.ok) {
-            const errorText = await overallRes.text();
-            console.error(
-              "Failed to fetch overall report:",
-              overallRes.status,
-              errorText
-            );
-            throw new Error(
-              `Failed to fetch overall report: ${overallRes.statusText}`
-            );
+
+          const allResults = await Promise.all(reportPromises);
+
+          for (const res of allResults) {
+            overallNew += res.new;
+            overallRenew += res.renew;
+            overallDelinquent += res.delinquent;
           }
-          const overallData = await overallRes.json();
-          const overallNew = overallData.businessTax?.new || 0;
-          const overallRenew = overallData.businessTax?.renew || 0;
+
           setOverallReportData({
             businessTax: {
               new: overallNew,
@@ -270,13 +256,49 @@ export default function BusinessReportsPage() {
               total: overallNew + overallRenew,
             },
           });
+
+          setDelinquentCount(overallDelinquent);
+        } else {
+          // Fetch specific barangay
+          const baseUrl = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(selectedBarangay)}`;
+          const delinquentUrl = `${baseUrl}&delinquent=true`;
+
+          const [reportRes, delinquentRes] = await Promise.all([
+            fetch(baseUrl, { credentials: "include" }),
+            fetch(delinquentUrl, { credentials: "include" }),
+          ]);
+
+          if (!reportRes.ok || !delinquentRes.ok) {
+            const errText = await reportRes.text();
+            console.error("Failed to fetch report:", reportRes.status, errText);
+            throw new Error("Failed to fetch report");
+          }
+
+          const reportData = await reportRes.json();
+          const delinquentData = await delinquentRes.json();
+
+          overallNew = reportData.businessTax?.new || 0;
+          overallRenew = reportData.businessTax?.renew || 0;
+          overallDelinquent = delinquentData.businessTax?.new || 0;
+
+          setOverallReportData({
+            businessTax: {
+              new: overallNew,
+              renew: overallRenew,
+              total: overallNew + overallRenew,
+            },
+          });
+
+          setDelinquentCount(overallDelinquent);
         }
       } catch (error) {
         console.error("Error in fetchReports:", error);
       }
     }
+
     fetchReports();
   }, [selectedYear, selectedBarangay]);
+
 
   // Fetch pumpboat count (boat count) from boat records
   useEffect(() => {
@@ -324,29 +346,40 @@ export default function BusinessReportsPage() {
 
 
   // Pie Chart Data using overall and pumpboat count data
+  const total =
+    (overallReportData?.businessTax.new || 0) +
+    (overallReportData?.businessTax.renew || 0) +
+    pumpboatCount +
+    delinquentCount;
+
   const chartData = {
-    labels: ["New", "Renew", "Pumpboat"],
+    labels: ["New", "Renew", "Pumpboat", "Delinquent"],
     datasets: [
       {
         label: `Year ${selectedYear}`,
         data: [
-          overallReportData ? overallReportData.businessTax.new : 0,
-          overallReportData ? overallReportData.businessTax.renew : 0,
+          overallReportData?.businessTax.new || 0,
+          overallReportData?.businessTax.renew || 0,
           pumpboatCount,
+          delinquentCount,
         ],
         backgroundColor: [
-          "rgb(54, 162, 235)", // Blue for New
-          "rgb(75, 192, 192)", // Teal for Renew
-          "rgb(255, 99, 132)", // Red for Pumpboat
+          "rgb(54, 162, 235)",    // Blue - New
+          "rgb(75, 192, 192)",    // Teal - Renew
+          "rgb(0, 17, 255)",      // Deep Blue - Pumpboat
+          "rgb(220, 38, 38)",     // Red - Delinquent
         ],
+        borderColor: "#fff",
+        borderWidth: 2,
+        offset: 10, // Adds visual separation for slices
       },
     ],
   };
 
-  // Pie chart options with DataLabels plugin
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    cutout: "50%", // Doughnut chart
     plugins: {
       title: {
         display: true,
@@ -354,20 +387,38 @@ export default function BusinessReportsPage() {
           selectedBarangay === "Overall"
             ? `Overall Business Tax Report - ${selectedYear}`
             : `Business Tax Report - ${selectedYear} - Brgy. ${selectedBarangay}`,
+        font: {
+          size: 18,
+          weight: "bold" as const,
+        },
       },
       legend: {
-        display: true,
+        position: "bottom" as const,
+        labels: {
+          boxWidth: 20,
+        },
+      },
+      tooltip: {
+        callbacks: {
+          label: function (context: any) {
+            const label = context.label || "";
+            const value = context.raw;
+            return `${label}: ${value}`; // 👈 Count only
+          },
+        },
       },
       datalabels: {
         color: "#fff",
-        formatter: (value: number) => value,
+        formatter: (value: number) => value, // 👈 Show count only
         font: {
-          weight: "bold" as "bold",
-          size: 14,
+          weight: "bold" as const,
+          size: 12,
         },
       },
     },
   };
+
+
 
   if (authLoading) {
     return (
@@ -449,11 +500,11 @@ export default function BusinessReportsPage() {
         </div>
 
         {/* Chart Section: Pie Chart */}
-        <div className="bg-white rounded shadow p-6 mb-8" style={{ height: "300px" }}>
+        <div className="bg-white rounded shadow p-6 mb-8" style={{ height: "500px" }}>
           <Pie data={chartData} options={chartOptions} />
         </div>
 
-        {/* Overall Business Tax Data Table (now including Pumpboat row) */}
+        {/* Overall Business Tax Data Table (now including Pumpboat and Delinquent rows) */}
         <div className="overflow-x-auto bg-white rounded shadow p-6 mb-8">
           <h2 className="text-xl font-semibold text-gray-700 mb-4">
             Overall Business Tax Data
@@ -487,12 +538,19 @@ export default function BusinessReportsPage() {
                   <td className="px-4 py-3">{overallReportData.businessTax.renew}</td>
                   <td className="px-4 py-3">{overallReportData.businessTax.total}</td>
                 </tr>
-                {/* New Pumpboat row */}
-                <tr>
+                {/* Pumpboat row */}
+                <tr className="border-b border-gray-200">
                   <td className="px-4 py-3">Pumpboat Count</td>
                   <td className="px-4 py-3">{selectedYear}</td>
                   <td className="px-4 py-3" colSpan={2}></td>
                   <td className="px-4 py-3">{pumpboatCount}</td>
+                </tr>
+                {/* Delinquent row */}
+                <tr>
+                  <td className="px-4 py-3">Delinquent Count</td>
+                  <td className="px-4 py-3">{selectedYear}</td>
+                  <td className="px-4 py-3 text-red-600 font-semibold" colSpan={2}></td>
+                  <td className="px-4 py-3 text-red-600 font-semibold">{delinquentCount}</td>
                 </tr>
               </tbody>
             </table>

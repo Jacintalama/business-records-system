@@ -164,7 +164,7 @@ export default function BusinessRecordsPage() {
 
   // Expired Function Cons
   const handleMarkAsExpired = async (recordId: string) => {
-    if (!confirm("Are you sure you want to mark this record as expired?")) return;
+    if (!confirm("Are you sure you want to mark this record as retired?")) return;
 
     try {
       const res = await fetch(`http://192.168.1.107:3000/api/business-record/${recordId}/expire`, {
@@ -181,7 +181,7 @@ export default function BusinessRecordsPage() {
 
       const data = await res.json();
 
-      toast.success("Record marked as expired.");
+      toast.success("Record marked as Retired.");
 
       // ✅ Update local state with new 'expired' value
       setApplicants(prev =>
@@ -191,7 +191,7 @@ export default function BusinessRecordsPage() {
       );
     } catch (err) {
       console.error(err);
-      toast.error("Failed to mark record as expired.");
+      toast.error("Failed to mark record as retired.");
     }
   };
 
@@ -228,22 +228,14 @@ export default function BusinessRecordsPage() {
     checkAuth();
   }, [router]);
 
-  const [selectedBarangay, setSelectedBarangay] = useState<string>(barangays[0]);
+  // 🚫 REMOVE useState
+  // const [selectedBarangay, setSelectedBarangay] = useState<string>(barangays[0]);
 
-  // This function use to force refresh
-  const [version] = useState(0);
+  // ✅ Instead, use a derived constant
+  const barangayQuery = searchParams.get("barangay") || "";
+  const selectedBarangay = barangays.includes(barangayQuery) ? barangayQuery : barangays[0];
 
 
-
-
-  useEffect(() => {
-    const barangayFromQuery = searchParams.get("barangay");
-    const initialBarangay = barangayFromQuery && barangays.includes(barangayFromQuery)
-      ? barangayFromQuery
-      : barangays[0];
-
-    setSelectedBarangay(initialBarangay);
-  }, [searchParams]);
 
 
   const [selectedFrequency, setSelectedFrequency] = useState<string>("all");
@@ -253,6 +245,7 @@ export default function BusinessRecordsPage() {
   const [applicants, setApplicants] = useState<ApplicantDisplay[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [onlyExpired, setOnlyExpired] = useState(false);
   useEffect(() => {
     setHydrated(true);
   }, []);
@@ -289,32 +282,50 @@ export default function BusinessRecordsPage() {
             gross: rec.gross || "",
             orNo: rec.orNo || "",
             totalPayment: rec.totalPayment || "",
-            expired: rec.expired || false, 
+            expired: rec.expired || false,
           } as ApplicantDisplay;
         })
         .filter(Boolean) as ApplicantDisplay[];
 
-      // keep latest per applicant
-      const uniqueMap: Record<string, ApplicantDisplay> = {};
+
+      // Group all records per applicant
+      const applicantGroups: Record<string, ApplicantDisplay[]> = {};
       allApplicants.forEach((a) => {
-        if (!uniqueMap[a.id] || a.year > uniqueMap[a.id].year) {
-          uniqueMap[a.id] = a;
+        if (!applicantGroups[a.id]) {
+          applicantGroups[a.id] = [];
+        }
+        applicantGroups[a.id].push(a);
+      });
+
+      let uniqueApplicants: ApplicantDisplay[] = [];
+
+      Object.values(applicantGroups).forEach((records) => {
+        // ✅ 1. Find the latest record (will be displayed)
+        const latest = records.reduce((prev, curr) =>
+          new Date(curr.date) > new Date(prev.date) ? curr : prev
+        );
+
+        // ✅ 2. Check if ANY of the records is delinquent
+        const hasDelinquent = records.some((r) => isRecordDelinquentExact(r));
+
+        // ✅ 3. Add only if not filtering or if we are filtering AND there's at least one delinquent
+        if (!onlyDelinquent || hasDelinquent) {
+          uniqueApplicants.push(latest);
         }
       });
-      let uniqueApplicants = Object.values(uniqueMap);
 
-      // delinquent filter
-      if (onlyDelinquent) {
-        uniqueApplicants = uniqueApplicants.filter((a) =>
-          isRecordDelinquentExact(a)
-        );
+
+      // ✅ expired filter
+      if (onlyExpired) {
+        uniqueApplicants = uniqueApplicants.filter((a) => a.expired === true);
       }
 
       const filteredByNature =
         selectedNature === "all"
           ? uniqueApplicants
-          : uniqueApplicants.filter(a => a.natureOfBusiness === selectedNature);
-
+          : uniqueApplicants.filter(a =>
+            a.natureOfBusiness.toLowerCase().includes(selectedNature.toLowerCase())
+          );
 
       // frequency filter
       const filteredByFrequency =
@@ -327,15 +338,14 @@ export default function BusinessRecordsPage() {
               selectedFrequency.trim().toLowerCase()
           );
 
-      // then apply  search on filteredByFrequency:
+      // search
       const searchedApplicants = filteredByFrequency.filter((a) =>
         `${a.applicantName} ${a.businessName}`
           .toLowerCase()
           .includes(searchQuery.toLowerCase())
       );
 
-
-      // ←—— Add this to sort by applicantName
+      // sort alphabetically
       searchedApplicants.sort((a, b) =>
         a.applicantName.localeCompare(b.applicantName)
       );
@@ -360,16 +370,20 @@ export default function BusinessRecordsPage() {
       .join(" ");
 
   useEffect(() => {
-    if (selectedBarangay) {
-      fetchApplicants(selectedBarangay);
-    }
+    if (!selectedBarangay || !barangays.includes(selectedBarangay)) return;
+    fetchApplicants(selectedBarangay);
   }, [
     selectedBarangay,
     onlyDelinquent,
-    selectedNature,    // ← replaced selectedBusinessName
+    onlyExpired,
+    selectedNature,
     selectedFrequency,
     searchQuery,
   ]);
+
+
+
+
 
   const uniqueBusinessNames = Array.from(
     new Set(applicants.map((a) => a.businessName.toLowerCase()))
@@ -383,24 +397,54 @@ export default function BusinessRecordsPage() {
   ];
 
   // with a nature-of-business version
-  const uniqueNatures = Array.from(
-    new Set(applicants.map(a => a.natureOfBusiness))
-  );
-  const natureOptions = [
+const getGroupedNatureOptions = (applicants: any[]) => {
+  const keywordsSet = new Set<string>();
+
+  applicants.forEach((a) => {
+    const raw = a.natureOfBusiness?.toLowerCase().replace(/[-\s]+/g, " ").trim();
+    if (!raw) return;
+    const keyword = raw.split(" ")[0]; // Use first word as keyword group
+    keywordsSet.add(keyword);
+  });
+
+  return [
     { value: "all", label: "All" },
-    ...uniqueNatures.map(nat => ({
-      value: nat,
-      label: capitalizeWords(nat),
+    ...Array.from(keywordsSet).map((kw) => ({
+      value: kw,
+      label: capitalizeWords(kw),
     })),
   ];
+};
+
+const natureOptions = getGroupedNatureOptions(applicants);
+
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 30;
+  const itemsPerPage = 1000;
   const totalPages = Math.ceil(applicants.length / itemsPerPage);
   const indexOfLastApplicant = currentPage * itemsPerPage;
   const indexOfFirstApplicant = indexOfLastApplicant - itemsPerPage;
-  const paginatedApplicants = applicants.slice(
+  function parseDate(dateStr: string): Date {
+    if (!dateStr) return new Date(0); // fallback for null/undefined
+
+    // Handles "MM/DD/YYYY" and "M/D/YYYY"
+    const parts = dateStr.split("/");
+    if (parts.length !== 3) return new Date(dateStr); // fallback
+
+    const [month, day, year] = parts.map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  // ✅ Sort applicants by date DESCENDING before slicing
+  const sortedApplicants = [...applicants].sort((a, b) => {
+    const dateA = parseDate(a.date);
+    const dateB = parseDate(b.date);
+    return dateB.getTime() - dateA.getTime(); // Descending
+  });
+
+  // ✅ Then paginate the sorted list
+  const paginatedApplicants = sortedApplicants.slice(
     indexOfFirstApplicant,
     indexOfLastApplicant
   );
@@ -479,19 +523,21 @@ export default function BusinessRecordsPage() {
               value={selectedBarangay}
               onChange={(e) => {
                 const barangay = e.target.value;
-                setSelectedBarangay(barangay);
-                router.replace(`?barangay=${encodeURIComponent(barangay)}`);
+                const params = new URLSearchParams(searchParams.toString());
+                params.set("barangay", barangay);
+                router.replace(`?${params.toString()}`);
               }}
-
-              className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-700 transition"
             >
-              {barangays.map((b) => (
-                <option key={b} value={b}>
-                  {b}
+              {barangays.map((bgy) => (
+                <option key={bgy} value={bgy}>
+                  {capitalizeWords(bgy)}
                 </option>
               ))}
             </select>
           </div>
+
+
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">
               Frequency
@@ -524,31 +570,52 @@ export default function BusinessRecordsPage() {
           </div>
         </div>
 
-        {/* Search & Delinquent Filter */}
-        <div className="flex flex-col sm:flex-row items-center justify-between pb-4 space-y-4 sm:space-y-0">
-          <div className="relative">
+        {/* Search & Filters */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 space-y-4 sm:space-y-0">
+          {/* Search Box */}
+          <div className="flex items-center w-full sm:w-auto">
             <input
               type="text"
               id="table-search"
-              className="block p-2 pl-10 text-sm text-gray-900 border border-gray-300 rounded-lg w-80 bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
+              className="block p-2 pl-10 text-sm text-gray-900 border border-gray-300 rounded-lg w-full sm:w-80 bg-gray-50 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Search for applicants"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
-          </div>
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="delinquent-filter"
-              checked={onlyDelinquent}
-              onChange={(e) => setOnlyDelinquent(e.target.checked)}
-              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <label htmlFor="delinquent-filter" className="ml-2 text-sm font-medium text-gray-700">
-              Show only delinquent
-            </label>
+
+            {/* ✅ Filters - tight next to search */}
+            <div className="flex items-center ml-4 space-x-4">
+              {/* Expired */}
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="expired-filter"
+                  checked={onlyExpired}
+                  onChange={(e) => setOnlyExpired(e.target.checked)}
+                  className="w-4 h-4 text-orange-600 bg-gray-100 border-gray-300 rounded focus:ring-orange-500"
+                />
+                <label htmlFor="expired-filter" className="ml-2 text-sm font-medium text-gray-700 whitespace-nowrap">
+                  Show only Retired
+                </label>
+              </div>
+
+              {/* Delinquent */}
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="delinquent-filter"
+                  checked={onlyDelinquent}
+                  onChange={(e) => setOnlyDelinquent(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label htmlFor="delinquent-filter" className="ml-2 text-sm font-medium text-gray-700 whitespace-nowrap">
+                  Show only Delinquent
+                </label>
+              </div>
+            </div>
           </div>
         </div>
+
 
         {/* Action Buttons: Add Record & Print PDF */}
         <div className="flex items-center justify-between mb-4">
@@ -573,6 +640,18 @@ export default function BusinessRecordsPage() {
 
         {/* Business Records Table */}
         <div className="relative overflow-x-auto shadow-md sm:rounded-lg">
+          {/* Legend Indicators */}
+          <div className="flex items-center space-x-4 mb-2 px-4 pt-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-orange-300 border border-orange-500 rounded-sm"></div>
+              <span className="text-sm text-gray-700">Retired</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-red-300 border border-red-500 rounded-sm"></div>
+              <span className="text-sm text-gray-700">Delinquent</span>
+            </div>
+          </div>
+
           <table className="table-fixed w-full text-sm text-left text-gray-700">
             <thead className="text-xs text-gray-700 uppercase bg-gray-50">
               <tr>
@@ -599,16 +678,26 @@ export default function BusinessRecordsPage() {
               ) : paginatedApplicants.length === 0 ? (
                 <tr>
                   <td colSpan={tableColumns.length + 1} className="px-4 py-4 text-center text-gray-500">
-                    No applicants found.
+                    {onlyExpired
+                      ? "No Retired applicants found."
+                      : onlyDelinquent
+                        ? "No delinquent applicants found."
+                        : searchQuery
+                          ? "No applicants match your search."
+                          : "No applicants found."}
                   </td>
                 </tr>
+
               ) : (
                 paginatedApplicants.map((applicant) => (
                   <tr
                     key={applicant.id}
-                    className={`hover:bg-gray-100 ${isRecordDelinquentExact(applicant)
-                      ? 'bg-red-300'
-                      : 'odd:bg-white even:bg-gray-50'
+                    className={`hover:bg-gray-100
+    ${applicant.expired
+                        ? 'bg-orange-200 text-orange-900' // 🟠 Orange if expired
+                        : isRecordDelinquentExact(applicant)
+                          ? 'bg-red-300'        // 🔴 Red if delinquent
+                          : 'odd:bg-white even:bg-gray-50'
                       }`}
                   >
                     {tableColumns.map((col) => {
@@ -666,7 +755,7 @@ export default function BusinessRecordsPage() {
                               </button>
                             ) : (
                               <button
-                                title="Mark as Expired"
+                                title="Mark as Retired"
                                 className="text-red-600 hover:text-red-800 ml-2"
                                 onClick={() => handleMarkAsExpired(applicant.recordId!)} // safe to assert here
                               >

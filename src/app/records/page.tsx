@@ -194,42 +194,43 @@ const columnGroups: { label: string; columns: Column[] }[] = [
     ],
   },
   {
-      label: 'Totals & Remarks',
-      columns: [
-        {
-          key: 'totalPayment',
-          label: 'Total Payment',
-          format: val => phpFormatter.format(Number(val)),
-        },
-        { key: 'remarks', 
-          label: 'Remarks',
-          format: collapseLines
-        
-        },
-        {
-          key: 'frequency',
-          label: 'Frequency',
-          format: (val: any) =>
-            typeof val === 'string' ? capitalize(val) : val,
-        },
-        {
-          key: 'renewed',
-          label: 'Renewed',
-          format: val => (val ? 'Yes' : 'No'),
-          
-        },
-      ],
-    },
-    {
-      label: 'Others',
-      columns: [
-        {
-          key: 'Other',
-          label: 'Other',
-          format: collapseLines
-        }
-      ],
-    },
+    label: 'Totals & Remarks',
+    columns: [
+      {
+        key: 'totalPayment',
+        label: 'Total Payment',
+        format: val => phpFormatter.format(Number(val)),
+      },
+      {
+        key: 'remarks',
+        label: 'Remarks',
+        format: collapseLines
+
+      },
+      {
+        key: 'frequency',
+        label: 'Frequency',
+        format: (val: any) =>
+          typeof val === 'string' ? capitalize(val) : val,
+      },
+      {
+        key: 'renewed',
+        label: 'Renewed',
+        format: val => (val ? 'Yes' : 'No'),
+
+      },
+    ],
+  },
+  {
+    label: 'Others',
+    columns: [
+      {
+        key: 'Other',
+        label: 'Other',
+        format: collapseLines
+      }
+    ],
+  },
 
   {
     label: 'Expiration',
@@ -239,25 +240,48 @@ const columnGroups: { label: string; columns: Column[] }[] = [
   },
 ];
 
-const computeRenewalDueDate = (dateStr: string, frequency: string): Date => {
-  const recordDate = new Date(dateStr);
-  const dueDate = new Date(recordDate);
-  if (frequency === 'quarterly') {
-    dueDate.setMonth(dueDate.getMonth() + 3);
-  } else if (frequency === 'semi-annual') {
-    dueDate.setMonth(dueDate.getMonth() + 6);
-  } else if (frequency === 'annual') {
-    dueDate.setFullYear(dueDate.getFullYear() + 1);
+const computeRenewalDueDate = (dateInput: string | Date, frequency: string): Date => {
+  const recordDate = new Date(dateInput);
+  const year = recordDate.getFullYear();
+  const month = recordDate.getMonth(); // 0-indexed
+
+  const normalized = frequency.toLowerCase();
+
+  if (normalized === 'quarterly') {
+    // Q1: Jan–Mar → Mar 31
+    // Q2: Apr–Jun → Jun 30
+    // Q3: Jul–Sep → Sep 30
+    // Q4: Oct–Dec → Dec 31
+    if (month <= 2) return new Date(year, 2, 31); // Mar
+    if (month <= 5) return new Date(year, 5, 30); // Jun
+    if (month <= 8) return new Date(year, 8, 30); // Sep
+    return new Date(year, 11, 31);                // Dec
   }
-  return dueDate;
+
+  if (normalized === 'semi-annual') {
+    // H1: Jan–Jun → Jun 30
+    // H2: Jul–Dec → Dec 31
+    if (month <= 5) return new Date(year, 5, 30);  // Jun
+    return new Date(year, 11, 31);                // Dec
+  }
+
+  if (normalized === 'annual') {
+    return new Date(year + 1, month, recordDate.getDate());
+  }
+
+  // fallback
+  return new Date(recordDate);
 };
+
 
 const isRecordDelinquent = (record: PaymentRecord): boolean => {
   const currentDate = new Date();
   const currentYear = currentDate.getFullYear();
+
   if (record.renewed) return false;
   if (record.year < currentYear) return true;
-  const dueDate = computeRenewalDueDate(record.date, record.frequency);
+
+  const dueDate = computeRenewalDueDate(record.date, record.frequency); // Keep it as a string here
   return dueDate < currentDate;
 };
 
@@ -411,7 +435,7 @@ export default function ReportPage() {
       setSelectedPermits(mappedPermits);
       hasInitializedPermits.current = true;
     }
-  }, [editRecord]); 
+  }, [editRecord]);
 
 
   // Recalculate totalPayment when fees or permits change
@@ -823,12 +847,10 @@ export default function ReportPage() {
   };
 
 
-
   const handleEditFormSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!editRecord) return;
 
-    // Build a payload that merges in the permits array
     const payload = {
       ...editRecord,
       permits: selectedPermits.map(p => ({
@@ -892,10 +914,15 @@ export default function ReportPage() {
     'polluters',
   ];
 
-  const handleEditInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const target = e.target as HTMLInputElement;
-    const { name, type, value } = target;
-    const newValue = type === 'checkbox' ? target.checked : value;
+  const handleEditInputChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
+    const target = e.target;
+    const name = target.name;
+    const newValue =
+      target.type === 'checkbox'
+        ? (target as HTMLInputElement).checked
+        : target.value;
 
     setEditRecord(prev => {
       const updatedRecord = { ...prev, [name]: newValue };
@@ -905,7 +932,7 @@ export default function ReportPage() {
         const newTotal = feeFields.reduce((sum, field) => {
           return sum + (parseFloat(updatedRecord[field]) || 0);
         }, 0);
-        updatedRecord.totalPayment = newTotal.toFixed(2); // Optional: format to 2 decimals
+        updatedRecord.totalPayment = newTotal.toFixed(2);
       }
 
       return updatedRecord;
@@ -997,10 +1024,6 @@ export default function ReportPage() {
     }
   }
 `}</style>
-
-
-
-
 
       {/* Topbar hidden during print */}
       <div className="no-print">
@@ -1262,9 +1285,9 @@ export default function ReportPage() {
 
                         return (
                           <td key={`${record.id}-${col.key}`} className={tdClass}>
-                          <span className="inline-block w-full">{displayValue}</span>
-                        </td>
-                        
+                            <span className="inline-block w-full">{displayValue}</span>
+                          </td>
+
                         );
                       })
                     )}
@@ -1647,47 +1670,57 @@ export default function ReportPage() {
                       <input
                         type="checkbox"
                         name={input.name}
-                        checked={(editRecord as any)[input.name] || false}
+                        checked={Boolean((editRecord as any)[input.name])}
                         onChange={handleEditInputChange}
                         className="border p-2"
-                        disabled={
-                          new Date() < computeRenewalDueDate(
-                            (editRecord as any).date,
-                            (editRecord as any).frequency
-                          )
-                        }
-                        title={
-                          new Date() < computeRenewalDueDate(
-                            (editRecord as any).date,
-                            (editRecord as any).frequency
-                          )
-                            ? 'Cannot renew until expired.'
-                            : ''
-                        }
                       />
+
+
+                    //   old version of check box uncomment this if its needed
+                    // input.type === 'checkbox' && input.name === 'renewed' ? (
+                    // <input
+                    //   type="checkbox"
+                    //   name={input.name}
+                    //   checked={(editRecord as any)[input.name] || false}
+                    //   onChange={handleEditInputChange}
+                    //   className="border p-2"
+                    //   disabled={
+                    //     !isRecordDelinquent(editRecord as any)
+                    //   }
+                    //   title={
+                    //     new Date() < computeRenewalDueDate(
+                    //       new Date((editRecord as any).date),
+                    //       (editRecord as any).frequency
+                    //     )
+                    //       ? 'Cannot renew until expired.'
+                    //       : ''
+                    //   }
+                    // />
+
+
                     ) : input.type === 'date' ? (
-                      <input
-                        type="date"
-                        name={input.name}
-                        value={editRecord?.date ? editRecord.date.split('T')[0] : ''}
-                        onChange={handleEditInputChange}
-                        className="border p-2 w-full"
-                      />
+                    <input
+                      type="date"
+                      name={input.name}
+                      value={editRecord?.date ? editRecord.date.split('T')[0] : ''}
+                      onChange={handleEditInputChange}
+                      className="border p-2 w-full"
+                    />
                     ) : input.type === 'textarea' ? (
-                      <textarea
-                        name={input.name}
-                        value={(editRecord as any)[input.name] || ''}
-                        onChange={handleEditInputChange}
-                        className="border p-2 w-full"
-                      />
+                    <textarea
+                      name={input.name}
+                      value={(editRecord as any)[input.name] || ''}
+                      onChange={handleEditInputChange}
+                      className="border p-2 w-full"
+                    />
                     ) : (
-                      <input
-                        type={input.type}
-                        name={input.name}
-                        value={(editRecord as any)[input.name] || ''}
-                        onChange={handleEditInputChange}
-                        className="border p-2 w-full"
-                      />
+                    <input
+                      type={input.type}
+                      name={input.name}
+                      value={(editRecord as any)[input.name] || ''}
+                      onChange={handleEditInputChange}
+                      className="border p-2 w-full"
+                    />
                     )}
                   </div>
                 ))}
@@ -1741,7 +1774,7 @@ export default function ReportPage() {
                                 {label}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                              <input
+                                <input
                                   type="number"
                                   min="0"
                                   step="0.01"

@@ -36,10 +36,13 @@ interface ApplicantRecord {
     orNo: string;
     totalPayment: string;
     frequency: string; // "quarterly" | "semi-annual" | "annual"
-    renewed: boolean; // ✅ add this
+    renewed: boolean;
+    busTax?: string;
 }
 
 export default function ReportListPage() {
+
+
     // ── Filters ────────────────────────────────────────────────────────
     const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
     const [selectedBarangay, setSelectedBarangay] = useState<string>(barangays[0]);
@@ -49,11 +52,16 @@ export default function ReportListPage() {
 
     // ── Data + loading ─────────────────────────────────────────────────
     const [rawRecords, setRawRecords] = useState<ApplicantRecord[]>([]);
+
+    const totalBusTax = rawRecords.reduce((sum, rec) => {
+        const val = parseFloat(rec.busTax ?? "0");
+        return sum + (isNaN(val) ? 0 : val);
+    }, 0);
     const [loading, setLoading] = useState<boolean>(false);
 
     // ── Pagination ─────────────────────────────────────────────────────
     const [currentPage, setCurrentPage] = useState(1);
-    const rowsPerPage = 50;
+    const rowsPerPage = 5000;
 
     useEffect(() => {
         async function fetchList() {
@@ -67,7 +75,7 @@ export default function ReportListPage() {
 
                     const fetchPromises = individualBarangays.map(b =>
                         fetch(
-                            `http://192.168.1.107:3000/api/business-record?barangay=${encodeURIComponent(b)}`,
+                            `http://192.168.1.236:3000/api/business-record?barangay=${encodeURIComponent(b)}`,
                             { credentials: "include" }
                         ).then(res => res.json())
                     );
@@ -82,7 +90,7 @@ export default function ReportListPage() {
                 } else {
                     // Fetch from selected barangay only
                     const res = await fetch(
-                        `http://192.168.1.107:3000/api/business-record?barangay=${encodeURIComponent(selectedBarangay)}`,
+                        `http://192.168.1.236:3000/api/business-record?barangay=${encodeURIComponent(selectedBarangay)}`,
                         { credentials: "include" }
                     );
                     if (!res.ok) throw new Error(res.statusText);
@@ -104,6 +112,7 @@ export default function ReportListPage() {
                     totalPayment: String(r.totalPayment),
                     frequency: r.frequency,
                     renewed: r.renewed ?? false,
+                    busTax: r.busTax ? String(r.busTax) : "",
                 }));
                 const deduped = Array.from(
                     new Map(
@@ -160,6 +169,7 @@ export default function ReportListPage() {
 
     // ── Final filtered + paginated records ────────────────────────────
     const filteredRecords = rawRecords.filter(rec => {
+
         // Status New vs Renew
         if (selectedStatus === "new" && rec.remarks.toLowerCase() === "renew") return false;
         if (selectedStatus === "renew" && rec.remarks.toLowerCase() !== "renew") return false;
@@ -404,10 +414,17 @@ export default function ReportListPage() {
                                 <strong>Year:</strong>{" "}
                                 <span className="font-semibold">{selectedYear}</span>
                             </div>
-                            <div>
-                                <strong>Barangay:</strong>{" "}
-                                <span className="font-semibold">{selectedBarangay}</span>
+                            <div className="flex gap-4">
+                                <div>
+                                    <strong>Barangay:</strong>{" "}
+                                    <span className="font-semibold">{selectedBarangay}</span>
+                                </div>
+                                <div>
+                                    <strong>Total Bus Tax:</strong>{" "}
+                                    <span className="font-semibold">{phpFormatter.format(totalBusTax)}</span>
+                                </div>
                             </div>
+
                             <div>
                                 <strong>Nature of Business:</strong>{" "}
                                 <span className="font-semibold">
@@ -438,7 +455,7 @@ export default function ReportListPage() {
                                 <thead className="bg-gray-100">
                                     <tr>
                                         {[
-                                            "Date", "Name of Applicant", "Business Name", "Nature of Business",
+                                            "Date", "Name of Applicant", "Bus Tax", "Business Name", "Nature of Business",
                                             "Address", "Status", "Gross", "OR No.", "Amount", "Mode of Payment"
                                         ].map(col => (
                                             <th
@@ -474,6 +491,9 @@ export default function ReportListPage() {
                                                     {rec.applicantName}
                                                 </td>
                                                 <td className="px-4 py-2 text-center">
+                                                    {phpFormatter.format(Number(rec.busTax || 0))}
+                                                </td>
+                                                <td className="px-4 py-2 text-center">
                                                     {rec.businessName}
                                                 </td>
                                                 <td className="px-4 py-2 text-center">
@@ -482,12 +502,16 @@ export default function ReportListPage() {
                                                 <td className="px-4 py-2 text-center">
                                                     {rec.applicantAddress}
                                                 </td>
-                                                <td className="px-4 py-2 text-center">
+                                                {/* Status / Remarks column */}
+                                                <td className="px-4 py-2 text-center w-28">
                                                     {rec.remarks}
                                                 </td>
-                                                <td className="px-4 py-2 text-center">
+
+                                                {/* Gross column (make wider to show ₱10,000,000.00 properly) */}
+                                                <td className="px-4 py-2 text-center w-40">
                                                     {phpFormatter.format(Number(rec.gross))}
                                                 </td>
+
 
                                                 <td className="px-4 py-2 text-center">
                                                     {rec.orNo.split('/').join(' / ')}
@@ -497,7 +521,7 @@ export default function ReportListPage() {
                                                     {phpFormatter.format(Number(rec.totalPayment))}
                                                 </td>
                                                 <td className="px-4 py-2 text-center">
-                                                    {rec.frequency}
+                                                    {rec.frequency.charAt(0).toUpperCase() + rec.frequency.slice(1)}
                                                 </td>
                                             </tr>
                                         ))

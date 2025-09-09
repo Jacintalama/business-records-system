@@ -12,7 +12,7 @@ const Topbar = () => {
   const [showDropdown, setShowDropdown] = useState(false);
 
   // Use the API URL from environment variables or fallback
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.1.107:3000';
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.1.236:3000';
 
   // Debug log the API_URL when the component mounts
   useEffect(() => {

@@ -57,7 +57,7 @@ export default function BoatRecordViewPage() {
       setLoading(true);
       try {
         const res = await fetch(
-          `http://192.168.1.107:3000/api/boatrecords/${boatRecordId}`,
+          `http://192.168.1.236:3000/api/boatrecords/${boatRecordId}`,
           { credentials: "include" }
         );
         if (!res.ok) throw new Error("Failed to fetch boat record.");

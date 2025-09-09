@@ -93,7 +93,7 @@ export default function BoatRecordsPage() {
     setIsLoading(true);
     try {
       const res = await fetch(
-        `http://192.168.1.107:3000/api/boatrecords?barangay=${encodeURIComponent(barangay)}`,
+        `http://192.168.1.236:3000/api/boatrecords?barangay=${encodeURIComponent(barangay)}`,
         { credentials: "include" }
       );
       if (!res.ok) {
@@ -184,7 +184,7 @@ export default function BoatRecordsPage() {
     if (!window.confirm("Delete this record?")) return;
     try {
       const res = await fetch(
-        `http://192.168.1.107:3000/api/boatrecords/${id}`,
+        `http://192.168.1.236:3000/api/boatrecords/${id}`,
         { method: "DELETE" }
       );
       if (!res.ok) {

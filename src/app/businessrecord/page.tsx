@@ -134,7 +134,7 @@ export default function BusinessRecordsPage() {
     if (!confirm("Are you sure you want to activate this record?")) return;
 
     try {
-      const res = await fetch(`http://192.168.1.107:3000/api/business-record/${recordId}/activate`, {
+      const res = await fetch(`http://192.168.1.236:3000/api/business-record/${recordId}/activate`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -167,7 +167,7 @@ export default function BusinessRecordsPage() {
     if (!confirm("Are you sure you want to mark this record as retired?")) return;
 
     try {
-      const res = await fetch(`http://192.168.1.107:3000/api/business-record/${recordId}/expire`, {
+      const res = await fetch(`http://192.168.1.236:3000/api/business-record/${recordId}/expire`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -208,7 +208,7 @@ export default function BusinessRecordsPage() {
   useEffect(() => {
     async function checkAuth() {
       try {
-        const res = await fetch("http://192.168.1.107:3000/api/auth/me", {
+        const res = await fetch("http://192.168.1.236:3000/api/auth/me", {
           credentials: "include",
         });
         if (res.ok) {
@@ -254,7 +254,7 @@ export default function BusinessRecordsPage() {
   const fetchApplicants = async (barangay: string) => {
     setIsLoading(true);
     try {
-      const url = `http://192.168.1.107:3000/api/business-record?barangay=${encodeURIComponent(barangay)}`;
+      const url = `http://192.168.1.236:3000/api/business-record?barangay=${encodeURIComponent(barangay)}`;
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) {
         if (res.status === 401) router.push("/auth/login");
@@ -477,7 +477,7 @@ const natureOptions = getGroupedNatureOptions(applicants);
   const handleDeleteApplicant = async (recordId: string) => {
     if (!confirm("Are you sure you want to delete this record?")) return;
     try {
-      const url = `http://192.168.1.107:3000/api/business-record/${recordId}`;
+      const url = `http://192.168.1.236:3000/api/business-record/${recordId}`;
       const res = await fetch(url, {
         method: "DELETE",
         credentials: "include",
@@ -621,7 +621,7 @@ const natureOptions = getGroupedNatureOptions(applicants);
         <div className="flex items-center justify-between mb-4">
           <button
             onClick={() =>
-              window.location.href = `http://192.168.1.107:3001/records/new`
+              window.location.href = `http://192.168.1.236:3001/records/new`
             }
             className="inline-flex items-center px-4 py-2 bg-green-600 text-white font-semibold rounded shadow hover:bg-green-500 transition-colors"
           >

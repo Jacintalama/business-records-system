@@ -169,7 +169,7 @@ export default function BusinessReportsPage() {
   useEffect(() => {
     async function checkAuth() {
       try {
-        const res = await fetch("http://192.168.1.107:3000/api/auth/me", {
+        const res = await fetch("http://192.168.1.236:3000/api/auth/me", {
           credentials: "include",
         });
         if (res.ok) {
@@ -217,7 +217,7 @@ export default function BusinessReportsPage() {
           const individualBarangays = barangays.filter((b) => b !== "Overall");
 
           const reportPromises = individualBarangays.map(async (b) => {
-            const url = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(b)}`;
+            const url = `http://192.168.1.236:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(b)}`;
             const delinquentUrl = `${url}&delinquent=true`;
 
             const [reportRes, delinquentRes] = await Promise.all([
@@ -260,7 +260,7 @@ export default function BusinessReportsPage() {
           setDelinquentCount(overallDelinquent);
         } else {
           // Fetch specific barangay
-          const baseUrl = `http://192.168.1.107:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(selectedBarangay)}`;
+          const baseUrl = `http://192.168.1.236:3000/api/business-record/reports?year=${selectedYear}&barangay=${encodeURIComponent(selectedBarangay)}`;
           const delinquentUrl = `${baseUrl}&delinquent=true`;
 
           const [reportRes, delinquentRes] = await Promise.all([
@@ -309,7 +309,7 @@ export default function BusinessReportsPage() {
         if (selectedBarangay === "Overall") {
           const individualBarangays = barangays.filter((b) => b !== "Overall");
           const promises = individualBarangays.map((b) => {
-            const url = `http://192.168.1.107:3000/api/boatrecords?barangay=${encodeURIComponent(
+            const url = `http://192.168.1.236:3000/api/boatrecords?barangay=${encodeURIComponent(
               b
             )}`;
             return fetch(url, { credentials: "include" }).then((res) => res.json());
@@ -321,7 +321,7 @@ export default function BusinessReportsPage() {
             }
           });
         } else {
-          const url = `http://192.168.1.107:3000/api/boatrecords?barangay=${encodeURIComponent(
+          const url = `http://192.168.1.236:3000/api/boatrecords?barangay=${encodeURIComponent(
             selectedBarangay
           )}`;
           const res = await fetch(url, { credentials: "include" });

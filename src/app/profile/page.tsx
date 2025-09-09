@@ -7,7 +7,7 @@ import 'react-toastify/dist/ReactToastify.css';
 
 const ProfilePage = () => {
   // Use the API URL from environment or fallback
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.1.107:3000';
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.1.236:3000';
 
   // State for profile information
   const [profile, setProfile] = useState({

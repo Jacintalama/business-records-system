@@ -290,7 +290,7 @@ export default function ReportPage() {
 
   const searchParams = useSearchParams();
   const router = useRouter();
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.1.107:3000';
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.1.236:3000';
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userName, setUserName] = useState('User');

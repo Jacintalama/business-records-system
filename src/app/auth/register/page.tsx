@@ -152,7 +152,7 @@ export default function RegisterPage() {
   };
 
   // Use the API URL from environment variables or fallback
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.107:3000";
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.236:3000";
 
   // Submit form
   const handleSubmit = async (e: React.FormEvent) => {

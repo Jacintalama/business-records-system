@@ -6,7 +6,7 @@ import Link from "next/link";
 import Select from "react-select";
 import { toast, ToastContainer } from "react-toastify";
 import { Slide } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+// import "react-toastify/dist/ReactToastify.css";
 import { FaBan, FaCheckCircle, FaEye, FaPlus, FaTimesCircle, FaTrash } from "react-icons/fa";
 import NavBar from "../components/NavBar";
 import BusinessRecordForm from "../components/BusinessRecordForm";

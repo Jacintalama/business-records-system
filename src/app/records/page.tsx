@@ -1,25 +1,54 @@
 "use client";
 
-import { useState, useEffect, ChangeEvent, FormEvent, useCallback, useRef } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import Image from 'next/image';
-import { toast, ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-import { FaEdit, FaTrash, FaFilePdf, FaCheck } from 'react-icons/fa';
-import Topbar from '../components/Topbar';
-import { computePeriodEnd } from '../utils/periodUtils';
-import Select, { MultiValue } from 'react-select'
-// Capital Letter Function
-const capitalize = (s: string) =>
-  s.charAt(0).toUpperCase() + s.slice(1);
+import React, {
+  useState,
+  useEffect,
+  ChangeEvent,
+  FormEvent,
+  useCallback,
+  useRef,
+  useMemo,
+  memo,
+} from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import Image from "next/image";
+import { toast, ToastContainer } from "react-toastify";
+// import 'react-toastify/dist/ReactToastify.css';
+import { FaEdit, FaTrash, FaFilePdf, FaCheck } from "react-icons/fa";
+import Topbar from "../components/Topbar";
+import { computePeriodEnd } from "../utils/periodUtils";
+import Select, { MultiValue } from "react-select";
+import RecordViewModal from "../components/RecordViewModal";
 
-interface MPOption { value: number; label: string }
-interface SelectedPermit { mayorPermitId: number; amount: string }
+// ----------------- Utils -----------------
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** 
- * Update the OwnerInfo interface to include natureOfBusiness.
- */
+const phpFormatter = new Intl.NumberFormat("en-PH", {
+  style: "currency",
+  currency: "PHP",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const collapseLines = (val: any): string =>
+  String(val)
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s*\(\s*/g, " (")
+    .replace(/\s*\)\s*/g, ")")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+// ----------------- Types -----------------
+interface MPOption {
+  value: number;
+  label: string;
+}
+interface SelectedPermit {
+  mayorPermitId: number;
+  amount: string | number;
+}
+
 interface OwnerInfo {
   applicantName: string;
   address: string;
@@ -31,7 +60,7 @@ interface OwnerInfo {
 
 interface PaymentRecord {
   [key: string]: any;
-  id: number;
+  id: number | string; // ⬅️ allow both
   year: number;
   date: string;
   gross: string;
@@ -55,7 +84,7 @@ interface PaymentRecord {
   expired: boolean;
   totalPayment: string;
   remarks: string;
-  frequency: 'quarterly' | 'semi-annual' | 'annual';
+  frequency: "quarterly" | "semi-annual" | "annual";
   renewed: boolean;
   marketCertification?: string;
   miscellaneous?: string;
@@ -67,7 +96,7 @@ interface PaymentRecord {
     applicantName: string;
     applicantAddress: string;
     businessName: string;
-    natureOfBusiness?: string;  // New field included in applicant details
+    natureOfBusiness?: string;
     capitalInvestment: number;
   };
   barangayClearance?: string;
@@ -80,220 +109,258 @@ interface PaymentRecord {
 }
 
 interface Column {
-  key: keyof PaymentRecord | 'expiredDate' | 'permits';
+  key: keyof PaymentRecord | "expiredDate" | "permits";
   label: string;
-  format?: (val: any) => string;
+  format?: (val: any) => string | number | React.ReactNode;
   sorter?: (a: PaymentRecord, b: PaymentRecord) => number;
-  defaultSortOrder?: 'ascend' | 'descend';
+  defaultSortOrder?: "ascend" | "descend";
 }
-// Money sign peso
-const phpFormatter = new Intl.NumberFormat('en-PH', {     // <- notice plain '-' here
-  style: 'currency',
-  currency: 'PHP',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2
-});
-// end
 
-// at top of your file, above columnGroups
-const collapseLines = (val: any): string =>
-  String(val)
-    .replace(/[\r\n]+/g, ' ')           // replace line breaks with space
-    .replace(/\s*\(\s*/g, ' (')         // ensure single space before '('
-    .replace(/\s*\)\s*/g, ')')          // trim spaces around ')'
-    .replace(/\s{2,}/g, ' ')            // collapse multiple spaces
-    .trim();
-
-
+// ----------------- Columns -----------------
 const columnGroups: { label: string; columns: Column[] }[] = [
   {
-    label: 'Basic Info',
+    label: "Basic Info",
     columns: [
-      { key: 'year', label: 'Year' },
+      { key: "year", label: "Year" },
       {
-        key: 'date',
-        label: 'Date',
-        format: v => new Date(v).toLocaleDateString(),
+        key: "date",
+        label: "Date",
+        format: (v) => new Date(v).toLocaleDateString(),
         sorter: (a: PaymentRecord, b: PaymentRecord) =>
           new Date(a.date).getTime() - new Date(b.date).getTime(),
-        defaultSortOrder: 'ascend',
+        defaultSortOrder: "ascend",
       },
-      { key: 'gross', label: 'Gross', format: v => phpFormatter.format(Number(v)) },
+      { key: "gross", label: "Gross", format: (v) => phpFormatter.format(Number(v)) },
       {
-        key: 'orNo',
-        label: 'OR No.',
-        // 1) collapse any new-lines into a single " / "
+        key: "orNo",
+        label: "OR No.",
         format: (raw: any) =>
           String(raw)
-            .split(/\r?\n+/)            // break on any line-break
-            .map(s => s.trim())         // trim each piece
-            .filter(Boolean)            // drop empty strings
-            .join(' / '),               // re-join with a space-slash-space
+            .split(/\r?\n+/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .join(" / "),
       },
-    ]
+    ],
   },
-  // ← New “Permits” group:
   {
-    label: 'Permits',
+    label: "Permits",
     columns: [
       {
-        key: 'permits',
-        label: 'Mayor’s Permits',
-        format: (perms: PaymentRecord['permits']) => {
-          if (!Array.isArray(perms) || perms.length === 0) return '—'
-          // build your comma‐list
+        key: "permits",
+        label: "Others Mayor’s Permits",
+        format: (perms: PaymentRecord["permits"]) => {
+          if (!Array.isArray(perms) || perms.length === 0) return "—";
           const text = perms
-            .map(p => `${p.name} (${phpFormatter.format(p.BusinessRecordPermit.amount)})`)
-            .join(', ')
-          // then collapse any accidental line‐breaks
-          return collapseLines(text)
-        }
-      }
-    ]
-  },
-  {
-    label: 'Fees & Clearances',
-    columns: [
-      { key: 'busTax', label: 'BUS TAX', format: v => phpFormatter.format(Number(v)) },
-      { key: 'mayorsPermit', label: "Mayor's Permit", format: v => phpFormatter.format(Number(v)) },
-      { key: 'sanitaryInps', label: 'Sanitary Inps', format: v => phpFormatter.format(Number(v)) },
-      { key: 'policeClearance', label: 'Police Clearance', format: v => phpFormatter.format(Number(v)) },
-      { key: 'barangayClearance', label: 'Barangay Clearance', format: v => phpFormatter.format(Number(v)) },
-      { key: 'zoningClearance', label: 'Zoning Clearance', format: v => phpFormatter.format(Number(v)) },
-      { key: 'taxClearance', label: 'Tax Clearance', format: v => phpFormatter.format(Number(v)) },
-      { key: 'garbage', label: 'Garbage', format: v => phpFormatter.format(Number(v)) },
-      { key: 'verification', label: 'Verification', format: v => phpFormatter.format(Number(v)) },
-      { key: 'weightAndMass', label: 'Weight & Mass', format: v => phpFormatter.format(Number(v)) },
-      { key: 'healthClearance', label: 'Health Clearance', format: v => phpFormatter.format(Number(v)) },
-      { key: 'secFee', label: 'SEC Fee', format: v => phpFormatter.format(Number(v)) },
-      { key: 'menro', label: 'MENRO', format: v => phpFormatter.format(Number(v)) },
-      { key: 'docTax', label: 'Doc Tax', format: v => phpFormatter.format(Number(v)) },
-      { key: 'eggsFee', label: "Egg's Fee", format: v => phpFormatter.format(Number(v)) },
-    ],
-  },
-  {
-    label: 'Surcharges',
-    columns: [
-      { key: 'surcharge25', label: '25% Surcharge', format: v => phpFormatter.format(Number(v)) },
-      { key: 'sucharge2', label: '2% Month', format: v => phpFormatter.format(Number(v)) },
-    ],
-  },
-  {
-    label: 'Additional Details',
-    columns: [
-      { key: 'garbageCollection', label: 'Garbage Collection', format: v => phpFormatter.format(Number(v)) },
-      { key: 'polluters', label: 'Polluters', format: v => phpFormatter.format(Number(v)) },
-      { key: 'Occupation', label: 'Occupation', format: v => phpFormatter.format(Number(v)) },
-    ],
-  },
-  {
-    label: 'Additional Info',
-    columns: [
-      { key: 'marketCertification', label: 'Market Certification', format: v => phpFormatter.format(Number(v)) },
-      { key: 'miscellaneous', label: 'Miscellaneous', format: v => phpFormatter.format(Number(v)) },
-    ],
-  },
-  {
-    label: 'Totals & Remarks',
-    columns: [
-      {
-        key: 'totalPayment',
-        label: 'Total Payment',
-        format: val => phpFormatter.format(Number(val)),
-      },
-      {
-        key: 'remarks',
-        label: 'Remarks',
-        format: collapseLines
-
-      },
-      {
-        key: 'frequency',
-        label: 'Frequency',
-        format: (val: any) =>
-          typeof val === 'string' ? capitalize(val) : val,
-      },
-      {
-        key: 'renewed',
-        label: 'Renewed',
-        format: val => (val ? 'Yes' : 'No'),
-
+            .map((p) => `${p.name} (${phpFormatter.format(p.BusinessRecordPermit.amount)})`)
+            .join(", ");
+          return collapseLines(text);
+        },
       },
     ],
   },
   {
-    label: 'Others',
+    label: "Fees & Clearances",
     columns: [
-      {
-        key: 'Other',
-        label: 'Other',
-        format: collapseLines
-      }
+      { key: "busTax", label: "BUS TAX", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "mayorsPermit", label: "Mayor's Permit", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "sanitaryInps", label: "Sanitary Inps", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "policeClearance", label: "Police Clearance", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "barangayClearance", label: "Barangay Clearance", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "zoningClearance", label: "Zoning Clearance", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "taxClearance", label: "Tax Clearance", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "garbage", label: "Garbage", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "verification", label: "Verification", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "weightAndMass", label: "Weight & Mass", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "healthClearance", label: "Health Clearance", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "secFee", label: "SEC Fee", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "menro", label: "MENRO", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "docTax", label: "Doc Tax", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "eggsFee", label: "Egg's Fee", format: (v) => phpFormatter.format(Number(v)) },
     ],
   },
-
   {
-    label: 'Expiration',
+    label: "Surcharges",
     columns: [
-      { key: 'expiredDate', label: 'Expired Date' },
+      { key: "surcharge25", label: "25% Surcharge", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "sucharge2", label: "2% Month", format: (v) => phpFormatter.format(Number(v)) },
     ],
+  },
+  {
+    label: "Additional Details",
+    columns: [
+      { key: "garbageCollection", label: "Garbage Collection", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "polluters", label: "Polluters", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "Occupation", label: "Occupation", format: (v) => phpFormatter.format(Number(v)) },
+    ],
+  },
+  {
+    label: "Additional Info",
+    columns: [
+      { key: "marketCertification", label: "Market Certification", format: (v) => phpFormatter.format(Number(v)) },
+      { key: "miscellaneous", label: "Miscellaneous", format: (v) => phpFormatter.format(Number(v)) },
+    ],
+  },
+  {
+    label: "Totals & Remarks",
+    columns: [
+      {
+        key: "totalPayment",
+        label: "Total Payment",
+        format: (val) => phpFormatter.format(Number(val)),
+      },
+      { key: "remarks", label: "Remarks", format: collapseLines },
+      {
+        key: "frequency",
+        label: "Frequency",
+        format: (val: any) => (typeof val === "string" ? capitalize(val) : val),
+      },
+      { key: "renewed", label: "Tax Paid", format: (val) => (val ? "Yes" : "No") },
+    ],
+  },
+  {
+    label: "Others",
+    columns: [{ key: "Other", label: "Other", format: collapseLines }],
+  },
+  {
+    label: "Expiration",
+    columns: [{ key: "expiredDate", label: "Expired Date" }],
   },
 ];
 
+// ----------------- Helpers -----------------
 const computeRenewalDueDate = (dateInput: string | Date, frequency: string): Date => {
   const recordDate = new Date(dateInput);
   const year = recordDate.getFullYear();
-  const month = recordDate.getMonth(); // 0-indexed
-
+  const month = recordDate.getMonth();
   const normalized = frequency.toLowerCase();
 
-  if (normalized === 'quarterly') {
-    // Q1: Jan–Mar → Mar 31
-    // Q2: Apr–Jun → Jun 30
-    // Q3: Jul–Sep → Sep 30
-    // Q4: Oct–Dec → Dec 31
-    if (month <= 2) return new Date(year, 2, 31); // Mar
-    if (month <= 5) return new Date(year, 5, 30); // Jun
-    if (month <= 8) return new Date(year, 8, 30); // Sep
-    return new Date(year, 11, 31);                // Dec
+  if (normalized === "quarterly") {
+    if (month <= 2) return new Date(year, 2, 31);
+    if (month <= 5) return new Date(year, 5, 30);
+    if (month <= 8) return new Date(year, 8, 30);
+    return new Date(year, 11, 31);
   }
-
-  if (normalized === 'semi-annual') {
-    // H1: Jan–Jun → Jun 30
-    // H2: Jul–Dec → Dec 31
-    if (month <= 5) return new Date(year, 5, 30);  // Jun
-    return new Date(year, 11, 31);                // Dec
+  if (normalized === "semi-annual") {
+    if (month <= 5) return new Date(year, 5, 30);
+    return new Date(year, 11, 31);
   }
-
-  if (normalized === 'annual') {
+  if (normalized === "annual") {
     return new Date(year + 1, month, recordDate.getDate());
   }
-
-  // fallback
   return new Date(recordDate);
 };
-
 
 const isRecordDelinquent = (record: PaymentRecord): boolean => {
   const currentDate = new Date();
   const currentYear = currentDate.getFullYear();
-
   if (record.renewed) return false;
   if (record.year < currentYear) return true;
-
-  const dueDate = computeRenewalDueDate(record.date, record.frequency); // Keep it as a string here
+  const dueDate = computeRenewalDueDate(record.date, record.frequency);
   return dueDate < currentDate;
 };
 
+const parseNumber = (value: string) => parseFloat(value.replace(/,/g, ""));
+const parseNum = (v: string) => parseFloat(v.replace(/,/g, "")) || 0;
+const extractNumber = (s: string): number => {
+  const m = s.match(/-?\d+(\.\d+)?/);
+  return m ? parseNum(m[0]) : 0;
+};
+
+// ----------------- Row (memoized) -----------------
+const TableRow: React.FC<{
+  record: PaymentRecord & { _expiredDate?: string; _delinquent?: boolean };
+  groups: typeof columnGroups;
+  onEdit: (r: PaymentRecord) => void;
+  onDelete: (id: number | string) => void; // ⬅️ allow both
+  onView: (r: PaymentRecord) => void;
+}> = memo(({ record, groups, onEdit, onDelete, onView }) => {
+  const delinquent = record._delinquent ?? isRecordDelinquent(record);
+
+  const handleView = () => onView(record);
+  const handleKey = (e: React.KeyboardEvent<HTMLTableRowElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onView(record);
+    }
+  };
+
+  return (
+    <tr
+      className={`hover:bg-gray-100 ${delinquent ? "bg-red-300" : "odd:bg-white even:bg-gray-50"} cursor-pointer`}
+      onClick={handleView}
+      onKeyDown={handleKey}
+      role="button"
+      tabIndex={0}
+      title="Click to view details"
+    >
+      {groups.flatMap((group) =>
+        group.columns.map((col) => {
+          let displayValue: React.ReactNode;
+          if (col.key === "expiredDate") {
+            displayValue =
+              (record as any)._expiredDate ||
+              computePeriodEnd(record.date, record.frequency, {
+                earlyRolloverDays: 30,
+              }).toLocaleDateString();
+          } else if (col.key === "permits") {
+            const raw = (record as any)[col.key] ?? [];
+            displayValue = col.format ? col.format(raw) : raw;
+          } else {
+            const raw = (record as any)[col.key] ?? "";
+            displayValue = col.format ? col.format(raw) : raw;
+          }
+
+          const isNoWrap = ["orNo", "permits", "Other", "remarks"].includes(
+            col.key as string
+          );
+          const tdClass = [
+            "px-4 py-2 h-12 text-gray-700",
+            isNoWrap ? "whitespace-nowrap" : "overflow-hidden whitespace-normal",
+          ].join(" ");
+
+          return (
+            <td key={`${record.id}-${String(col.key)}`} className={tdClass}>
+              <span className="inline-block w-full">{displayValue}</span>
+            </td>
+          );
+        })
+      )}
+      <td className="px-4 py-2 text-center no-print">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(record);
+          }}
+          className="text-blue-600 hover:text-blue-800 mr-2"
+          title="Edit"
+        >
+          <FaEdit />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(record.id);
+          }}
+          className="text-red-600 hover:text-red-800"
+          title="Delete"
+        >
+          <FaTrash />
+        </button>
+      </td>
+    </tr>
+  );
+});
+TableRow.displayName = "TableRow";
+
+// ----------------- Main Component -----------------
 export default function ReportPage() {
-
-
   const searchParams = useSearchParams();
   const router = useRouter();
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.1.236:3000';
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.236:3000";
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userName, setUserName] = useState('User');
+  const [userName, setUserName] = useState("User");
 
   // Inline editing states for owner information
   const [ownerInfo, setOwnerInfo] = useState<OwnerInfo | null>(null);
@@ -306,316 +373,127 @@ export default function ReportPage() {
     capitalInvestment: false,
   });
 
-  // ─── MP: master list + selection state ─────────────────────────────
-  const [mpOptions, setMpOptions] = useState<MPOption[]>([])
-  const [selectedPermits, setSelectedPermits] = useState<SelectedPermit[]>([])
-  const [showEdit, setShowEdit] = useState(false);
+  // Permits
+  const [mpOptions, setMpOptions] = useState<MPOption[]>([]);
+  const [selectedPermits, setSelectedPermits] = useState<SelectedPermit[]>([]);
 
+  // Records & paging
+  const [records, setRecords] = useState<PaymentRecord[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50); // ↓ smaller default for speed
 
+  // Forms / View modal
+  const [showForm, setShowForm] = useState(false);
+  const [editRecord, setEditRecord] = useState<Partial<PaymentRecord> | null>(null);
+  const [viewRecord, setViewRecord] = useState<PaymentRecord | null>(null);
+
+  // ----------------- Auth -----------------
   useEffect(() => {
-    fetch(`${API_URL}/api/business-record/mp`, { credentials: 'include' })
-      .then(r => r.json())
-      .then((data: { id: number; name: string }[]) =>
-        setMpOptions(data.map(mp => ({ value: mp.id, label: mp.name })))
-      )
-      .catch(err => {
-        console.error('Failed loading MP:', err)
-        toast.error('Could not load permit options')
-      })
-  }, [API_URL])
-
-
-
-  const handlePermitsChange = (opts: MultiValue<MPOption>) => {
-    setSelectedPermits(opts.map(o => {
-      const existing = selectedPermits.find(p => p.mayorPermitId === o.value)
-      return existing || { mayorPermitId: o.value, amount: '' }
-    }))
-  }
-
-  const handlePermitAmountChange = (id: number, val: string) => {
-    setSelectedPermits(ps =>
-      ps.map(p => p.mayorPermitId === id ? { ...p, amount: val } : p)
-    )
-  }
-  // ────────────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    async function checkAuth() {
+    (async function checkAuth() {
       try {
-        const res = await fetch(`${API_URL}/api/auth/me`, { credentials: 'include' });
+        const res = await fetch(`${API_URL}/api/auth/me`, { credentials: "include" });
         if (res.ok) {
           const data = await res.json();
           setIsAuthenticated(true);
-          const fullName = `${data.firstName} ${data.middleName ? data.middleName + ' ' : ''}${data.lastName}`;
+          const fullName = `${data.firstName} ${data.middleName ? data.middleName + " " : ""}${data.lastName}`;
           setUserName(fullName);
         } else {
           setIsAuthenticated(false);
-          router.push('/auth/login');
+          router.push("/auth/login");
         }
       } catch (error) {
-        console.error('Auth check error:', error);
-        router.push('/auth/login');
+        console.error("Auth check error:", error);
+        router.push("/auth/login");
       }
-    }
-    checkAuth();
+    })();
   }, [router, API_URL]);
 
-  function convertDateForInput(dateStr: string): string {
-    if (dateStr.includes('-')) return dateStr;
-    const parts = dateStr.split('/');
-    if (parts.length !== 3) return dateStr;
-    const [month, day, year] = parts;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
-
-  const applicantIdParam = searchParams.get('applicantId');
-  const storedApplicantId = typeof window !== 'undefined'
-    ? localStorage.getItem('applicantId')
-    : '';
+  // ----------------- URL params / Applicant -----------------
+  const applicantIdParam = searchParams.get("applicantId");
+  const storedApplicantId = typeof window !== "undefined" ? localStorage.getItem("applicantId") : "";
   const initialApplicantId =
-    applicantIdParam &&
-      applicantIdParam !== 'undefined' &&
-      applicantIdParam !== 'null'
+    applicantIdParam && applicantIdParam !== "undefined" && applicantIdParam !== "null"
       ? applicantIdParam
-      : storedApplicantId || '';
-
+      : storedApplicantId || "";
   const [localApplicantId, setLocalApplicantId] = useState<string>(initialApplicantId);
-  // ─── sync localApplicantId with any URL changes ────────────────────
+
   useEffect(() => {
-    const param = searchParams.get('applicantId');
-    if (
-      param &&
-      param !== 'undefined' &&
-      param !== 'null' &&
-      param !== localApplicantId
-    ) {
+    const param = searchParams.get("applicantId");
+    if (param && param !== "undefined" && param !== "null" && param !== localApplicantId) {
       setLocalApplicantId(param);
-      localStorage.setItem('applicantId', param);
+      localStorage.setItem("applicantId", param);
     }
-  }, [searchParams.toString(), localApplicantId]);
-  // ──────────────────────────────────────────────────────────────────
+  }, [searchParams, localApplicantId]);
 
-  const applicantNameParam = searchParams.get('applicantName') || '';
-  const applicantAddressParam = searchParams.get('applicantAddress') || '';
+  const applicantNameParam = searchParams.get("applicantName") || "";
+  const applicantAddressParam = searchParams.get("applicantAddress") || "";
 
-  const [records, setRecords] = useState<PaymentRecord[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 100;
-  const [showForm, setShowForm] = useState(false);
-  const [editRecord, setEditRecord] = useState<Partial<PaymentRecord> | null>(null);
-
-
-  // ✅ only runs when the record ID changes (i.e. when you first click “Edit”)
+  // ----------------- Permit master list -----------------
   useEffect(() => {
-    // 1) if editRecord is null OR has no id → bail out
-    if (!editRecord || editRecord.id == null) return;
+    fetch(`${API_URL}/api/business-record/mp`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((data: { id: number; name: string }[]) =>
+        setMpOptions(data.map((mp) => ({ value: mp.id, label: mp.name })))
+      )
+      .catch((err) => {
+        console.error("Failed loading MP:", err);
+        toast.error("Could not load permit options");
+      });
+  }, [API_URL]);
 
-    // 2) at this point TS knows editRecord is not null and has an id
-    const permits = editRecord.permits ?? [];
-    setSelectedPermits(
-      permits.map(p => ({
-        mayorPermitId: p.id,
-        amount: String(p.BusinessRecordPermit.amount),
-      }))
-    );
-  }, [editRecord?.id]);
+  const handlePermitsChange = useCallback((opts: MultiValue<MPOption>) => {
+    setSelectedPermits((prev) => {
+      const next = opts.map((o) => {
+        const existing = prev.find((p) => p.mayorPermitId === o.value);
+        return existing || { mayorPermitId: o.value, amount: "" };
+      });
+      return next;
+    });
+  }, []);
 
-  // ─── Auto-recalculate totalPayment in Edit form ─────────────────
+  const handlePermitAmountChange = useCallback((id: number, val: string) => {
+    setSelectedPermits((ps) => ps.map((p) => (p.mayorPermitId === id ? { ...p, amount: val } : p)));
+  }, []);
 
+  // When Edit modal opens, hydrate selected permits once
   const hasInitializedPermits = useRef(false);
-  // Sync permits from editRecord on edit load
   useEffect(() => {
-    if (editRecord && editRecord.permits && !hasInitializedPermits.current) {
-      const mappedPermits = editRecord.permits.map(permit => ({
+    if (editRecord && (editRecord as any).permits && !hasInitializedPermits.current) {
+      const mappedPermits = (editRecord as any).permits.map((permit: any) => ({
         mayorPermitId: permit.id,
-        name: permit.name,
-        amount: String(permit.BusinessRecordPermit?.amount || '0'),
+        amount: String(permit.BusinessRecordPermit?.amount || "0"),
       }));
       setSelectedPermits(mappedPermits);
       hasInitializedPermits.current = true;
     }
   }, [editRecord]);
 
-
-  // Recalculate totalPayment when fees or permits change
+  // If editRecord id changes (new click), reset the guard
   useEffect(() => {
-    if (!editRecord) return;
+    hasInitializedPermits.current = false;
+  }, [editRecord?.id]);
 
-    const feeKeys: (keyof PaymentRecord)[] = [
-      'busTax', 'mayorsPermit', 'sanitaryInps', 'policeClearance', 'barangayClearance',
-      'zoningClearance', 'taxClearance', 'garbage', 'verification',
-      'weightAndMass', 'healthClearance', 'secFee', 'menro', 'docTax',
-      'eggsFee', 'marketCertification', 'garbageCollection',
-      'polluters', 'Occupation', 'miscellaneous', 'surcharge25', 'sucharge2',
-      'Other'
-    ];
-
-    const feesSum = feeKeys.reduce((sum: number, key) => {
-      const rawValue = editRecord[key];
-      const rawString = typeof rawValue === 'string' ? rawValue : '';
-      const numbersInString = rawString.match(/-?\d+(\.\d+)?/g) ?? [];
-      const subtotal = numbersInString.reduce((subSum, n) => subSum + parseFloat(n), 0);
-      return sum + subtotal;
-    }, 0);
-
-    const permitsSum = selectedPermits.reduce((sum: number, permit) => {
-      const amount = typeof permit.amount === 'number'
-        ? permit.amount
-        : parseFloat(String(permit.amount)) || 0;
-      return sum + amount;
-    }, 0);
-
-    const newTotal = feesSum + permitsSum;
-    const currentTotal = parseFloat(editRecord.totalPayment ?? '0');
-
-    if (currentTotal !== newTotal) {
-      setEditRecord(prev =>
-        prev ? { ...prev, totalPayment: newTotal.toFixed(2) } : prev
-      );
-    }
-  }, [
-    // all fee fields of editRecord as deps
-    editRecord?.busTax, editRecord?.sanitaryInps, editRecord?.policeClearance,
-    editRecord?.barangayClearance, editRecord?.zoningClearance, editRecord?.taxClearance,
-    editRecord?.garbage, editRecord?.verification, editRecord?.weightAndMass,
-    editRecord?.healthClearance, editRecord?.secFee, editRecord?.menro,
-    editRecord?.docTax, editRecord?.eggsFee, editRecord?.marketCertification,
-    editRecord?.garbageCollection, editRecord?.polluters, editRecord?.Occupation,
-    editRecord?.miscellaneous, editRecord?.surcharge25, editRecord?.sucharge2,
-    editRecord?.Other,
-    selectedPermits // also depend on permits so it recalculates on permit change
-  ]);
-
-  // ────────────────────────────────────────────────────────────────
-
-  // Updated initial form data now includes natureOfBusiness
-  const [formData, setFormData] = useState({
-    applicantName: '',
-    applicantAddress: '',
-    businessName: '',
-    natureOfBusiness: '',
-    capitalInvestment: '',
-    year: new Date().getFullYear(),
-    date: '',
-    gross: '',
-    orNo: '',
-    busTax: '',
-    mayorsPermit: '',
-    sanitaryInps: '',
-    policeClearance: '',
-    barangayClearance: '',
-    zoningClearance: '',
-    taxClearance: '',
-    garbage: '',
-    verification: '',
-    weightAndMass: '',
-    healthClearance: '',
-    secFee: '',
-    menro: '',
-    docTax: '',
-    eggsFee: '',
-    marketCertification: '',
-    surcharge25: '',
-    sucharge2: '',
-    miscellaneous: '',
-    totalPayment: '',
-    remarks: '',
-    frequency: 'annual',
-    garbageCollection: '',
-    polluters: '',
-    Occupation: '',
-    Other: '',
-  });
-  // whenever we open the “Add New Record” form, pre-fill it
-  useEffect(() => {
-    if (showForm && ownerInfo) {
-      setFormData(prev => ({
-        ...prev,
-        applicantName: ownerInfo.applicantName,
-        applicantAddress: ownerInfo.address,
-        businessName: ownerInfo.businessName,
-        natureOfBusiness: ownerInfo.natureOfBusiness,
-        capitalInvestment: ownerInfo.capitalInvestment,
-      }));
-    }
-  }, [showForm, ownerInfo]);
-  // When ownerInfo changes, copy it to tempOwnerInfo for inline editing
-  useEffect(() => {
-    if (ownerInfo) {
-      setTempOwnerInfo(ownerInfo);
-    }
-  }, [ownerInfo]);
-
-  // Inline editing handlers for owner info
-  const startEditing = (field: keyof OwnerInfo) => {
-    setEditingFields((prev) => ({ ...prev, [field]: true }));
-  };
-
-  const handleOwnerInfoInputChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    if (tempOwnerInfo) {
-      setTempOwnerInfo({ ...tempOwnerInfo, [name]: value });
-    }
-  };
-
-  // Updated to use the /api/applicant endpoint
-  const saveField = async (field: keyof OwnerInfo) => {
-    if (!tempOwnerInfo || !ownerInfo) return;
-    try {
-      const res = await fetch(
-        `${API_URL}/api/applicants/${ownerInfo.applicantId}`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ [field]: tempOwnerInfo[field] }),
-        }
-      );
-      if (res.ok) {
-        toast.success(`${field} updated successfully!`, { autoClose: 3000 });
-        setOwnerInfo({ ...ownerInfo, [field]: tempOwnerInfo[field] });
-        setEditingFields((prev) => ({ ...prev, [field]: false }));
-      } else {
-        const errorData = await res.json();
-        toast.error('Error: ' + errorData.message);
-      }
-    } catch (error) {
-      console.error('Error updating owner info:', error);
-      toast.error('Failed to update owner info.');
-    }
-  };
-
-
+  // ----------------- Fetch data (memo-friendly) -----------------
   const fetchData = useCallback(async () => {
     try {
       let url = `${API_URL}/api/business-record?`;
-      if (localApplicantId && localApplicantId !== 'undefined') {
+      if (localApplicantId && localApplicantId !== "undefined") {
         url += `applicantId=${encodeURIComponent(localApplicantId)}&`;
       }
-      if (applicantNameParam) {
-        url += `applicantName=${encodeURIComponent(applicantNameParam)}&`;
-      }
-      if (applicantAddressParam) {
-        url += `applicantAddress=${encodeURIComponent(applicantAddressParam)}&`;
-      }
+      if (applicantNameParam) url += `applicantName=${encodeURIComponent(applicantNameParam)}&`;
+      if (applicantAddressParam) url += `applicantAddress=${encodeURIComponent(applicantAddressParam)}&`;
 
-      const res = await fetch(url, { credentials: 'include' });
-      if (!res.ok) {
-        throw new Error(`Failed to fetch: ${res.statusText}`);
-      }
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to fetch: ${res.statusText}`);
       const data = await res.json();
 
-      // ─── Sort logic changed ENTIRELY ─────────────────────────────────────
-      const sortedRecords = data.records.sort((a: PaymentRecord, b: PaymentRecord) => {
-        // 1) newest year first
-        if (b.year !== a.year) {
-          return b.year - a.year;
+      // Sort once (newest year, then newest date)
+      const sortedRecords: PaymentRecord[] = data.records.sort(
+        (a: PaymentRecord, b: PaymentRecord) => {
+          if (b.year !== a.year) return b.year - a.year;
+          return new Date(b.date).getTime() - new Date(a.date).getTime();
         }
-        // 2) within same year, newest date first
-        return new Date(b.date).getTime() - new Date(a.date).getTime();
-      });
-      // ────────────────────────────────────────────────────────────────────
+      );
 
       setRecords(sortedRecords);
 
@@ -625,407 +503,497 @@ export default function ReportPage() {
           applicantName: app.applicantName,
           address: app.applicantAddress,
           businessName: app.businessName,
-          natureOfBusiness: app.natureOfBusiness || '',
+          natureOfBusiness: app.natureOfBusiness || "",
           capitalInvestment: String(app.capitalInvestment),
           applicantId: String(app.id),
         };
         setOwnerInfo(info);
+      } else {
+        setOwnerInfo(null);
       }
-    } catch (error) {
-      console.error('Error fetching records:', error);
-      toast.error(`Error fetching records: ${(error as Error).message}`);
+    } catch (error: any) {
+      console.error("Error fetching records:", error);
+      toast.error(`Error fetching records: ${error.message}`);
       setRecords([]);
       setOwnerInfo(null);
     }
   }, [localApplicantId, applicantNameParam, applicantAddressParam, API_URL]);
 
-
-
   useEffect(() => {
     fetchData();
-  }, [fetchData, searchParams.toString()]);
+  }, [fetchData, searchParams]);
 
+  // ----------------- Memoized derivations -----------------
+  const uniqueRecords = useMemo(() => {
+    const map = new Map<string | number, PaymentRecord>(); // ⬅️ support both
+    for (const r of records) map.set(r.id, r);
+    return Array.from(map.values());
+  }, [records]);
 
-  const uniqueRecords = Array.from(new Map(records.map((r) => [r.id, r])).values());
-  const totalPages = Math.ceil(uniqueRecords.length / pageSize);
-  const startIndex = (currentPage - 1) * pageSize;
-  const currentRecords = uniqueRecords.slice(startIndex, startIndex + pageSize);
+  // Precompute light view fields (avoid recomputing in cells)
+  const viewRecords = useMemo(() => {
+    return uniqueRecords.map((r) => ({
+      ...r,
+      _expiredDate: computePeriodEnd(r.date, r.frequency).toLocaleDateString(),
+      _delinquent: isRecordDelinquent(r),
+    }));
+  }, [uniqueRecords]);
 
-  // ←—— 
-  const tableColumns = columnGroups.flatMap(group =>
-    group.columns.map(col => ({
-      title: col.label,
-      dataIndex: col.key,
-      render: col.format,
-      sorter: col.sorter,
-      defaultSortOrder: col.defaultSortOrder
-    }))
+  const totalPages = useMemo(
+    () => Math.ceil(viewRecords.length / pageSize),
+    [viewRecords.length, pageSize]
   );
-  const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const startIndex = useMemo(() => (currentPage - 1) * pageSize, [currentPage, pageSize]);
+  const currentRecords = useMemo(
+    () => viewRecords.slice(startIndex, startIndex + pageSize),
+    [viewRecords, startIndex, pageSize]
+  );
+
+  const flatCols = useMemo(() => columnGroups.flatMap((g) => g.columns), []);
+  const printCols = useMemo(() => flatCols.filter((c) => c.key !== "expiredDate"), [flatCols]);
+  const colsPerPage = 8;
+  const pages = useMemo(() => {
+    const res: typeof printCols[] = [];
+    for (let i = 0; i < printCols.length; i += colsPerPage) res.push(printCols.slice(i, i + colsPerPage));
+    return res;
+  }, [printCols]);
+
+  // ----------------- Owner inline edit -----------------
+  const startEditing = useCallback((field: keyof OwnerInfo) => {
+    setEditingFields((prev) => ({ ...prev, [field]: true }));
+  }, []);
+
+  const handleOwnerInfoInputChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-  // helper to turn "14,240.15" → 14240.15
-  const parseNumber = (value: string) =>
-    parseFloat(value.replace(/,/g, ''));
+    setTempOwnerInfo((prev) => (prev ? { ...prev, [name]: value } : prev));
+  }, []);
 
-  // ─── Helpers ──────────────────────────────────────────────────────
-  // fallback-friendly parse
-  const parseNum = (v: string) => parseFloat(v.replace(/,/g, "")) || 0;
+  useEffect(() => {
+    if (ownerInfo) setTempOwnerInfo(ownerInfo);
+  }, [ownerInfo]);
 
-  // pull the first numeric substring out of any string
-  const extractNumber = (s: string): number => {
-    const m = s.match(/-?\d+(\.\d+)?/);
-    return m ? parseNum(m[0]) : 0;
-  };
+  const saveField = useCallback(
+    async (field: keyof OwnerInfo) => {
+      if (!tempOwnerInfo || !ownerInfo) return;
+      try {
+        const res = await fetch(`${API_URL}/api/applicants/${ownerInfo.applicantId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ [field]: (tempOwnerInfo as any)[field] }),
+        });
+        if (res.ok) {
+          toast.success(`${String(field)} updated successfully!`, { autoClose: 2000 });
+          setOwnerInfo({ ...ownerInfo, [field]: (tempOwnerInfo as any)[field] });
+          setEditingFields((prev) => ({ ...prev, [field]: false }));
+        } else {
+          const errorData = await res.json();
+          toast.error("Error: " + errorData.message);
+        }
+      } catch (error) {
+        console.error("Error updating owner info:", error);
+        toast.error("Failed to update owner info.");
+      }
+    },
+    [API_URL, tempOwnerInfo, ownerInfo]
+  );
 
-  // ─── Calculate totalPayment ───────────────────────────────────────
-  const calculateTotalPayment = (): number => {
-    const source = editRecord ?? formData; // ← fallback to formData for create mode
+  // ----------------- Add form -----------------
+  const [formData, setFormData] = useState({
+    applicantName: "",
+    applicantAddress: "",
+    businessName: "",
+    natureOfBusiness: "",
+    capitalInvestment: "",
+    year: new Date().getFullYear(),
+    date: "",
+    gross: "",
+    orNo: "",
+    busTax: "",
+    mayorsPermit: "",
+    sanitaryInps: "",
+    policeClearance: "",
+    barangayClearance: "",
+    zoningClearance: "",
+    taxClearance: "",
+    garbage: "",
+    verification: "",
+    weightAndMass: "",
+    healthClearance: "",
+    secFee: "",
+    menro: "",
+    docTax: "",
+    eggsFee: "",
+    marketCertification: "",
+    surcharge25: "",
+    sucharge2: "",
+    miscellaneous: "",
+    totalPayment: "",
+    remarks: "",
+    frequency: "annual" as "quarterly" | "semi-annual" | "annual",
+    garbageCollection: "",
+    polluters: "",
+    Occupation: "",
+    Other: "",
+  });
 
-    const feeKeys: Array<keyof typeof source> = [
-      'busTax', 'mayorsPermit', 'sanitaryInps', 'policeClearance',
-      'barangayClearance', 'zoningClearance', 'taxClearance', 'garbage',
-      'verification', 'weightAndMass', 'healthClearance', 'secFee',
-      'menro', 'docTax', 'eggsFee', 'marketCertification',
-      'garbageCollection', 'polluters', 'Occupation', 'miscellaneous',
-      'surcharge25', 'sucharge2', 'Other'
+  useEffect(() => {
+    if (showForm && ownerInfo) {
+      setFormData((prev) => ({
+        ...prev,
+        applicantName: ownerInfo.applicantName,
+        applicantAddress: ownerInfo.address,
+        businessName: ownerInfo.businessName,
+        natureOfBusiness: ownerInfo.natureOfBusiness,
+        capitalInvestment: ownerInfo.capitalInvestment,
+      }));
+    }
+  }, [showForm, ownerInfo]);
+
+  const handleInputChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      const { name, value, type, checked } = e.target as HTMLInputElement;
+      setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
+    },
+    []
+  );
+
+  const calculateTotalPayment = useCallback((): number => {
+    const source: any = editRecord ?? formData;
+    const feeKeys: string[] = [
+      "busTax",
+      "mayorsPermit",
+      "sanitaryInps",
+      "policeClearance",
+      "barangayClearance",
+      "zoningClearance",
+      "taxClearance",
+      "garbage",
+      "verification",
+      "weightAndMass",
+      "healthClearance",
+      "secFee",
+      "menro",
+      "docTax",
+      "eggsFee",
+      "marketCertification",
+      "garbageCollection",
+      "polluters",
+      "Occupation",
+      "miscellaneous",
+      "surcharge25",
+      "sucharge2",
+      "Other",
     ];
 
     const feesSum = feeKeys.reduce((sum: number, key) => {
       const rawValue = source[key];
-      const rawString = typeof rawValue === 'string' ? rawValue : '';
+      const rawString = typeof rawValue === "string" ? rawValue : "";
       const numbersInString = rawString.match(/-?\d+(\.\d+)?/g) ?? [];
       const subtotal = numbersInString.reduce((subSum, n) => subSum + parseFloat(n), 0);
       return sum + subtotal;
     }, 0);
 
     const permitsSum = selectedPermits.reduce((sum: number, permit) => {
-      const amount = typeof permit.amount === 'number'
-        ? permit.amount
-        : parseFloat(String(permit.amount)) || 0;
+      const amount =
+        typeof permit.amount === "number" ? permit.amount : parseFloat(String(permit.amount)) || 0;
       return sum + amount;
     }, 0);
 
     return feesSum + permitsSum;
-  };
+  }, [editRecord, formData, selectedPermits]);
 
-
-
-  // ―― watch every field (including “Other”) ――
+  // Auto-recalc total for Add form
   useEffect(() => {
     const newTotal = calculateTotalPayment();
-    // extract old total’s number too
     const oldMatch = String(formData.totalPayment).match(/-?\d+(\.\d+)?/g);
-    const oldTotal = oldMatch
-      ? oldMatch.reduce((s, num) => s + parseFloat(num), 0)
-      : 0;
+    const oldTotal = oldMatch ? oldMatch.reduce((s, num) => s + parseFloat(num), 0) : 0;
+    if (oldTotal !== newTotal)
+      setFormData((f) => ({ ...f, totalPayment: String(newTotal.toFixed(2)) }));
+  }, [formData, selectedPermits, calculateTotalPayment]);
 
-    if (oldTotal !== newTotal) {
-      setFormData(f => ({ ...f, totalPayment: String(newTotal) }));
-    }
-  }, [
-    formData.busTax, formData.mayorsPermit, formData.sanitaryInps,
-    formData.policeClearance, formData.barangayClearance,
-    formData.zoningClearance, formData.taxClearance, formData.garbage,
-    formData.verification, formData.weightAndMass, formData.healthClearance,
-    formData.secFee, formData.menro, formData.docTax, formData.eggsFee,
-    formData.marketCertification, formData.garbageCollection,
-    formData.polluters, formData.Occupation, formData.miscellaneous,
-    formData.surcharge25, formData.sucharge2, formData.Other,
-    selectedPermits
-  ]);
+  const handleFormSubmit = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      try {
+        const payload = {
+          applicantId: localApplicantId,
+          ...formData,
+          gross: parseNumber(formData.gross || "0"),
+          permits: selectedPermits.map((p) => ({
+            mayorPermitId: p.mayorPermitId,
+            amount: parseNumber(String(p.amount)) || 0,
+          })),
+        };
 
-
-  const handleFormSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    try {
-      const payload = {
-        applicantId: localApplicantId,
-        // copy all your formData fields:
-        ...formData,
-        // ALWAYS include gross (even if empty):
-        gross: parseNumber(formData.gross || "0"),
-        // map your selected permits into the shape your API expects:
-        permits: selectedPermits.map(p => ({
-          mayorPermitId: p.mayorPermitId,
-          amount: parseNumber(p.amount) || 0,
-        })),
-      };
-
-      const res = await fetch(`${API_URL}/api/business-record`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        toast.success('Record added successfully!', { position: 'top-right', autoClose: 3000 });
-
-        if (data.record) {
-          const newInfo: OwnerInfo = {
-            applicantName: data.record.applicantName,
-            address: data.record.applicantAddress,
-            businessName: data.record.businessName,
-            natureOfBusiness: data.record.natureOfBusiness || '',
-            capitalInvestment: String(data.record.capitalInvestment),
-            applicantId: data.record.applicantId,
-          };
-          setOwnerInfo(newInfo);
-
-          if (!localApplicantId) {
-            setLocalApplicantId(data.record.applicantId);
-            localStorage.setItem('applicantId', data.record.applicantId);
-            const currentUrl = new URL(window.location.href);
-            currentUrl.searchParams.set('applicantId', data.record.applicantId);
-            window.history.replaceState(null, '', currentUrl.toString());
-          }
-        }
-
-
-        setFormData({
-
-          applicantName: '',
-          applicantAddress: '',
-          businessName: '',
-          natureOfBusiness: '',
-          capitalInvestment: '',
-          year: new Date().getFullYear(),
-          date: '',
-          gross: '',
-          orNo: '',
-          busTax: '',
-          mayorsPermit: '',
-          sanitaryInps: '',
-          policeClearance: '',
-          barangayClearance: '',
-          zoningClearance: '',
-          taxClearance: '',
-          garbage: '',
-          verification: '',
-          weightAndMass: '',
-          healthClearance: '',
-          secFee: '',
-          menro: '',
-          docTax: '',
-          eggsFee: '',
-          marketCertification: '',
-          surcharge25: '',
-          sucharge2: '',
-          miscellaneous: '',
-          totalPayment: '',
-          remarks: '',
-          frequency: 'annual',
-          garbageCollection: '',
-          polluters: '',
-          Occupation: '',
-          Other: '',
+        const res = await fetch(`${API_URL}/api/business-record`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
         });
-        setShowForm(false);
-        fetchData();
-      } else {
-        const errorData = await res.json();
-        toast.error('Error: ' + errorData.message, { position: 'top-right' });
+        if (res.ok) {
+          const data = await res.json();
+          toast.success("Record added successfully!", {
+            position: "top-right",
+            autoClose: 2000,
+          });
+
+          if (data.record) {
+            const newInfo: OwnerInfo = {
+              applicantName: data.record.applicantName,
+              address: data.record.applicantAddress,
+              businessName: data.record.businessName,
+              natureOfBusiness: data.record.natureOfBusiness || "",
+              capitalInvestment: String(data.record.capitalInvestment),
+              applicantId: data.record.applicantId,
+            };
+            setOwnerInfo(newInfo);
+
+            if (!localApplicantId) {
+              setLocalApplicantId(data.record.applicantId);
+              localStorage.setItem("applicantId", data.record.applicantId);
+              const currentUrl = new URL(window.location.href);
+              currentUrl.searchParams.set("applicantId", data.record.applicantId);
+              window.history.replaceState(null, "", currentUrl.toString());
+            }
+          }
+
+          // Reset
+          setFormData((prev) => ({
+            ...prev,
+            date: "",
+            gross: "",
+            orNo: "",
+            busTax: "",
+            mayorsPermit: "",
+            sanitaryInps: "",
+            policeClearance: "",
+            barangayClearance: "",
+            zoningClearance: "",
+            taxClearance: "",
+            garbage: "",
+            verification: "",
+            weightAndMass: "",
+            healthClearance: "",
+            secFee: "",
+            menro: "",
+            docTax: "",
+            eggsFee: "",
+            marketCertification: "",
+            surcharge25: "",
+            sucharge2: "",
+            miscellaneous: "",
+            totalPayment: "",
+            remarks: "",
+            garbageCollection: "",
+            polluters: "",
+            Occupation: "",
+            Other: "",
+          }));
+
+          setSelectedPermits([]);
+          setShowForm(false);
+          fetchData();
+        } else {
+          const errorData = await res.json();
+          toast.error("Error: " + errorData.message, { position: "top-right" });
+        }
+      } catch (error) {
+        console.error("Error submitting form:", error);
+        toast.error("An error occurred while submitting the form.", {
+          position: "top-right",
+        });
       }
-    } catch (error) {
-      console.error('Error submitting form:', error);
-      toast.error('An error occurred while submitting the form.', { position: 'top-right' });
-    }
-  };
+    },
+    [API_URL, formData, localApplicantId, selectedPermits, fetchData]
+  );
 
-  const handleEditRecord = (record: PaymentRecord) => {
+  // ----------------- Edit form -----------------
+  const feeFields = useMemo(
+    () => [
+      "busTax",
+      "mayorsPermit",
+      "sanitaryInps",
+      "policeClearance",
+      "barangayClearance",
+      "zoningClearance",
+      "taxClearance",
+      "garbage",
+      "verification",
+      "weightAndMass",
+      "healthClearance",
+      "secFee",
+      "menro",
+      "docTax",
+      "eggsFee",
+      "marketCertification",
+      "surcharge25",
+      "sucharge2",
+      "miscellaneous",
+      "garbageCollection",
+      "polluters",
+    ],
+    []
+  );
+
+  const handleEditRecord = useCallback((record: PaymentRecord) => {
     setEditRecord(record);
-
-    // record.permits is optional, so default to []
     setSelectedPermits(
-      (record.permits ?? []).map(p => ({
+      (record.permits ?? []).map((p) => ({
         mayorPermitId: p.id,
         amount: String(p.BusinessRecordPermit.amount),
       }))
     );
-  };
+  }, []);
 
+  const handleEditInputChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      const target = e.target as HTMLInputElement;
+      const name = target.name;
+      const newValue = target.type === "checkbox" ? target.checked : target.value;
 
-  const handleEditFormSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!editRecord) return;
-
-    const payload = {
-      ...editRecord,
-      permits: selectedPermits.map(p => ({
-        mayorPermitId: p.mayorPermitId,
-        amount: parseFloat(p.amount) || 0
-      }))
-    };
-
-    try {
-      const res = await fetch(
-        `${API_URL}/api/business-record/${editRecord.id}`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(payload)
+      setEditRecord((prev: any) => {
+        if (!prev) return prev;
+        const updatedRecord: any = { ...prev, [name]: newValue };
+        if (feeFields.includes(name)) {
+          const newTotal = feeFields.reduce(
+            (sum, field) => sum + (parseFloat(updatedRecord[field]) || 0),
+            0
+          );
+          updatedRecord.totalPayment = newTotal.toFixed(2);
         }
-      );
-      if (res.ok) {
-        toast.success('Record updated successfully!', {
-          position: 'top-right',
-          autoClose: 3000
-        });
-        setEditRecord(null);
-        fetchData();
-      } else {
-        const errorData = await res.json();
-        toast.error('Error: ' + errorData.message, {
-          position: 'top-right'
-        });
-      }
-    } catch (error) {
-      console.error('Error updating record:', error);
-      toast.error('Failed to update record.', {
-        position: 'top-right'
+        return updatedRecord;
       });
-    }
-  };
+    },
+    [feeFields]
+  );
 
-  const feeFields = [
-    'busTax',
-    'mayorsPermit',
-    'sanitaryInps',
-    'policeClearance',
-    'barangayClearance',
-    'zoningClearance',
-    'taxClearance',
-    'garbage',
-    'verification',
-    'weightAndMass',
-    'healthClearance',
-    'secFee',
-    'menro',
-    'docTax',
-    'eggsFee',
-    'marketCertification',
-    'surcharge25',
-    'sucharge2',
-    'miscellaneous',
-    'garbageCollection',
-    'polluters',
-  ];
+  const handleEditFormSubmit = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      if (!editRecord) return;
 
-  const handleEditInputChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
-    const target = e.target;
-    const name = target.name;
-    const newValue =
-      target.type === 'checkbox'
-        ? (target as HTMLInputElement).checked
-        : target.value;
+      const payload = {
+        ...editRecord,
+        permits: selectedPermits.map((p) => ({
+          mayorPermitId: p.mayorPermitId,
+          amount: parseFloat(String(p.amount)) || 0,
+        })),
+      };
 
-    setEditRecord(prev => {
-      const updatedRecord = { ...prev, [name]: newValue };
-
-      // ✅ Only recalculate totalPayment if the field is a fee
-      if (feeFields.includes(name)) {
-        const newTotal = feeFields.reduce((sum, field) => {
-          return sum + (parseFloat(updatedRecord[field]) || 0);
-        }, 0);
-        updatedRecord.totalPayment = newTotal.toFixed(2);
+      try {
+        const res = await fetch(
+          `${API_URL}/api/business-record/${encodeURIComponent(String((editRecord as any).id))}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(payload),
+          }
+        );
+        if (res.ok) {
+          toast.success("Record updated successfully!", {
+            position: "top-right",
+            autoClose: 2000,
+          });
+          setEditRecord(null);
+          fetchData();
+        } else {
+          const errorData = await res.json();
+          toast.error("Error: " + errorData.message, { position: "top-right" });
+        }
+      } catch (error) {
+        console.error("Error updating record:", error);
+        toast.error("Failed to update record.", { position: "top-right" });
       }
+    },
+    [API_URL, editRecord, selectedPermits, fetchData]
+  );
 
-      return updatedRecord;
-    });
-  };
-
-
-  const handleDeleteRecord = async (recordId: number) => {
-    if (!confirm('Are you sure you want to delete this record?')) return;
-    try {
-      const res = await fetch(`${API_URL}/api/business-record/${recordId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (res.ok) {
-        toast.success('Record deleted successfully!', { position: 'top-right', autoClose: 3000 });
-        fetchData();
-      } else {
-        const err = await res.json();
-        toast.error('Error: ' + err.message, { position: 'top-right' });
+  const handleDeleteRecord = useCallback(
+    async (recordId: number | string) => {
+      if (!confirm("Are you sure you want to delete this record?")) return;
+      try {
+        const res = await fetch(
+          `${API_URL}/api/business-record/${encodeURIComponent(String(recordId))}`,
+          { method: "DELETE", credentials: "include" }
+        );
+        if (res.ok) {
+          toast.success("Record deleted successfully!", {
+            position: "top-right",
+            autoClose: 2000,
+          });
+          fetchData();
+        } else {
+          const err = await res.json();
+          toast.error("Error: " + err.message, { position: "top-right" });
+        }
+      } catch (error) {
+        console.error("Error deleting record:", error);
+        toast.error("Failed to delete record.", { position: "top-right" });
       }
-    } catch (error) {
-      console.error('Error deleting record:', error);
-      toast.error('Failed to delete record.', { position: 'top-right' });
-    }
-  };
+    },
+    [API_URL, fetchData]
+  );
 
-  const handlePdfPrint = () => {
-    window.print();
-  };
-  // 1) flatten all columns
-  const flatCols = columnGroups.flatMap(g => g.columns);
+  const handlePdfPrint = useCallback(() => window.print(), []);
 
-  // 2) drop the expiredDate column for printing only
-  const printCols = flatCols.filter(col => col.key !== 'expiredDate');
-
-  // 3) split into pages of N columns
-  const colsPerPage = 8;   // tweak until it looks right
-
-  // <— use Column[][] here
-  const pages: Column[][] = [];
-
-  for (let i = 0; i < printCols.length; i += colsPerPage) {
-    pages.push(printCols.slice(i, i + colsPerPage));
-  }
-
-
+  // ----------------- Render -----------------
   return (
     <div>
       {/* Global Print Styles */}
       <style jsx global>{`
-  @media print {
-    /* long bond landscape */
-    @page { size: 13in 8.5in; margin: 1cm; }
+        @media print {
+          @page {
+            size: 13in 8.5in;
+            margin: 1cm;
+          }
+          .no-print,
+          .top-bar {
+            display: none !important;
+          }
+          .overflow-x-auto {
+            overflow: visible !important;
+          }
+          body,
+          table,
+          th,
+          td {
+            font-family: Arial, "Segoe UI", sans-serif !important;
+            font-size: 11px;
+            -webkit-print-color-adjust: exact;
+          }
+          .print-container {
+            width: 100%;
+            transform: scale(0.98);
+            transform-origin: top left;
+          }
+          .print-page {
+            page-break-after: always;
+          }
+          table {
+            width: 100% !important;
+            border-collapse: collapse;
+            table-layout: auto;
+          }
+          thead {
+            display: table-header-group;
+          }
+          tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          th,
+          td {
+            border: 1px solid #000 !important;
+            padding: 6px !important;
+            white-space: normal !important;
+            word-wrap: break-word;
+          }
+        }
+      `}</style>
 
-    /* hide everything you don’t want */
-    .no-print, .top-bar { display: none !important; }
-    .overflow-x-auto { overflow: visible !important; }
-
-    /* basic typography */
-    body, table, th, td {
-      font-family: Arial, "Segoe UI", sans-serif !important;
-      font-size: 11px;
-      -webkit-print-color-adjust: exact;
-    }
-
-    /* scale down slightly if you overflow */
-    .print-container {
-      width: 100%; transform: scale(0.98); transform-origin: top left;
-    }
-
-    /* each .print-page becomes one sheet */
-    .print-page { page-break-after: always; }
-
-    /* tables full-width, no squeezing */
-    table {
-      width: 100% !important;
-      border-collapse: collapse;
-      table-layout: auto;
-    }
-    thead { display: table-header-group; }
-    tr    { page-break-inside: avoid; break-inside: avoid; }
-
-    th, td {
-      border: 1px solid #000 !important;
-      padding: 6px !important;
-      white-space: normal !important;
-      word-wrap: break-word;
-    }
-  }
-`}</style>
-
-      {/* Topbar hidden during print */}
       <div className="no-print">
         <Topbar />
       </div>
@@ -1036,7 +1004,7 @@ export default function ReportPage() {
       <div className="w-full p-4 no-print">
         <Link
           href={`/businessrecord?barangay=${encodeURIComponent(
-            searchParams.get('barangay') || ''
+            searchParams.get("barangay") || ""
           )}`}
           className="inline-flex items-center bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-700 transition duration-200 ease-in-out"
         >
@@ -1044,16 +1012,11 @@ export default function ReportPage() {
         </Link>
       </div>
 
-
       <div className="w-[95%] mx-auto my-8 print-container">
-        {/* Header / Logo */}
+        {/* Header Logos */}
         <div className="flex justify-between items-center mb-8">
-          <div>
-            <Image src="/Logo1.png" alt="Logo" width={180} height={60} className="object-contain" />
-          </div>
-          <div>
-            <Image src="/maasenso.png" alt="Maasenso Logo" width={180} height={60} className="object-contain" />
-          </div>
+          <Image src="/Logo1.png" alt="Logo" width={180} height={60} className="object-contain" />
+          <Image src="/maasenso.png" alt="Maasenso Logo" width={180} height={60} className="object-contain" />
         </div>
 
         {/* Applicant Info Header with Inline Editing */}
@@ -1069,7 +1032,7 @@ export default function ReportPage() {
                     <input
                       type="text"
                       name="applicantName"
-                      value={tempOwnerInfo?.applicantName || ''}
+                      value={tempOwnerInfo?.applicantName || ""}
                       onChange={handleOwnerInfoInputChange}
                       className="flex-1 border-none outline-none"
                     />
@@ -1077,24 +1040,22 @@ export default function ReportPage() {
                     <span>{ownerInfo.applicantName}</span>
                   )}
                   {editingFields.applicantName ? (
-                    <button onClick={() => saveField('applicantName')} className="ml-2 no-print">
+                    <button onClick={() => saveField("applicantName")} className="ml-2 no-print">
                       <FaCheck />
                     </button>
                   ) : (
-                    <button onClick={() => startEditing('applicantName')} className="ml-2 no-print">
+                    <button onClick={() => startEditing("applicantName")} className="ml-2 no-print">
                       <FaEdit />
                     </button>
                   )}
                 </div>
-                <label className="block text-sm font-semibold text-gray-700 mt-4">
-                  Address:
-                </label>
+                <label className="block text-sm font-semibold text-gray-700 mt-4">Address:</label>
                 <div className="flex items-center border-b border-gray-400 py-1">
                   {editingFields.address ? (
                     <input
                       type="text"
                       name="address"
-                      value={tempOwnerInfo?.address || ''}
+                      value={tempOwnerInfo?.address || ""}
                       onChange={handleOwnerInfoInputChange}
                       className="flex-1 border-none outline-none"
                     />
@@ -1102,26 +1063,24 @@ export default function ReportPage() {
                     <span>{ownerInfo.address}</span>
                   )}
                   {editingFields.address ? (
-                    <button onClick={() => saveField('address')} className="ml-2 no-print">
+                    <button onClick={() => saveField("address")} className="ml-2 no-print">
                       <FaCheck />
                     </button>
                   ) : (
-                    <button onClick={() => startEditing('address')} className="ml-2 no-print">
+                    <button onClick={() => startEditing("address")} className="ml-2 no-print">
                       <FaEdit />
                     </button>
                   )}
                 </div>
               </div>
               <div className="w-full md:w-1/2">
-                <label className="block text-sm font-semibold text-gray-700">
-                  Name of Business:
-                </label>
+                <label className="block text-sm font-semibold text-gray-700">Name of Business:</label>
                 <div className="flex items-center border-b border-gray-400 py-1">
                   {editingFields.businessName ? (
                     <input
                       type="text"
                       name="businessName"
-                      value={tempOwnerInfo?.businessName || ''}
+                      value={tempOwnerInfo?.businessName || ""}
                       onChange={handleOwnerInfoInputChange}
                       className="flex-1 border-none outline-none"
                     />
@@ -1129,14 +1088,11 @@ export default function ReportPage() {
                     <span>{ownerInfo.businessName}</span>
                   )}
                   {editingFields.businessName ? (
-
-                    <button onClick={() => saveField('businessName')}
-                      className="ml-2 no-print">
+                    <button onClick={() => saveField("businessName")} className="ml-2 no-print">
                       <FaCheck />
                     </button>
                   ) : (
-                    <button onClick={() => startEditing('businessName')}
-                      className="ml-2 no-print">
+                    <button onClick={() => startEditing("businessName")} className="ml-2 no-print">
                       <FaEdit />
                     </button>
                   )}
@@ -1149,7 +1105,7 @@ export default function ReportPage() {
                     <input
                       type="text"
                       name="natureOfBusiness"
-                      value={tempOwnerInfo?.natureOfBusiness || ''}
+                      value={tempOwnerInfo?.natureOfBusiness || ""}
                       onChange={handleOwnerInfoInputChange}
                       className="flex-1 border-none outline-none"
                     />
@@ -1157,11 +1113,11 @@ export default function ReportPage() {
                     <span>{ownerInfo.natureOfBusiness}</span>
                   )}
                   {editingFields.natureOfBusiness ? (
-                    <button onClick={() => saveField('natureOfBusiness')} className="ml-2 no-print">
+                    <button onClick={() => saveField("natureOfBusiness")} className="ml-2 no-print">
                       <FaCheck />
                     </button>
                   ) : (
-                    <button onClick={() => startEditing('natureOfBusiness')} className="ml-2 no-print">
+                    <button onClick={() => startEditing("natureOfBusiness")} className="ml-2 no-print">
                       <FaEdit />
                     </button>
                   )}
@@ -1174,7 +1130,7 @@ export default function ReportPage() {
                     <input
                       type="text"
                       name="capitalInvestment"
-                      value={tempOwnerInfo?.capitalInvestment || ''}
+                      value={tempOwnerInfo?.capitalInvestment || ""}
                       onChange={handleOwnerInfoInputChange}
                       className="flex-1 border-none outline-none"
                     />
@@ -1182,11 +1138,11 @@ export default function ReportPage() {
                     <span>{ownerInfo.capitalInvestment}</span>
                   )}
                   {editingFields.capitalInvestment ? (
-                    <button onClick={() => saveField('capitalInvestment')} className="ml-2 no-print">
+                    <button onClick={() => saveField("capitalInvestment")} className="ml-2 no-print">
                       <FaCheck />
                     </button>
                   ) : (
-                    <button onClick={() => startEditing('capitalInvestment')} className="ml-2 no-print">
+                    <button onClick={() => startEditing("capitalInvestment")} className="ml-2 no-print">
                       <FaEdit />
                     </button>
                   )}
@@ -1198,37 +1154,53 @@ export default function ReportPage() {
           )}
         </header>
 
-        {/* Buttons for Add Record & Print (hidden in print) */}
-        <div className="mb-4 no-print flex justify-between items-center">
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="bg-green-600 text-white px-4 py-2 rounded"
-          >
-            {showForm ? 'Hide Form' : 'Add New Record'}
-          </button>
-          <button
-            onClick={handlePdfPrint}
-            className="bg-gray-200 text-gray-700 p-2 rounded hover:bg-gray-300 transition duration-200 ease-in-out"
-            title="Print PDF"
-          >
-            <FaFilePdf size={20} />
-          </button>
+        {/* Actions Row */}
+        <div className="mb-4 no-print flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex gap-3 items-center">
+            <button
+              onClick={() => setShowForm((s) => !s)}
+              className="bg-green-600 text-white px-4 py-2 rounded"
+            >
+              {showForm ? "Hide Form" : "Add New Record"}
+            </button>
+            <button
+              onClick={handlePdfPrint}
+              className="bg-gray-200 text-gray-700 p-2 rounded hover:bg-gray-300"
+              title="Print PDF"
+            >
+              <FaFilePdf size={20} />
+            </button>
+          </div>
+          {/* Page size selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Rows per page:</span>
+            <select
+              className="border rounded px-2 py-1"
+              value={pageSize}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setPageSize(next);
+                setCurrentPage(1); // reset
+              }}
+            >
+              {[25, 50, 100, 250].map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* Watermark on screen and print */}
-        {currentRecords.some(record => record.expired) && (
-          <div className="watermark-print">
-            RETIRED
-          </div>
-        )}
+        {/* Watermark on screen/print if any expired */}
+        {currentRecords.some((r) => r.expired) && <div className="watermark-print">RETIRED</div>}
 
-        {/* Table */}
-
+        {/* Main Table (screen) */}
         <div className="w-full sm:rounded-lg border border-gray-200 overflow-x-auto print:hidden">
           <table className="min-w-full table-auto text-sm text-left text-gray-500">
             <thead className="bg-gray-50">
               <tr>
-                {columnGroups.map(group => (
+                {columnGroups.map((group) => (
                   <th
                     key={group.label}
                     colSpan={group.columns.length}
@@ -1242,10 +1214,10 @@ export default function ReportPage() {
                 </th>
               </tr>
               <tr>
-                {columnGroups.map(group =>
-                  group.columns.map(col => (
+                {columnGroups.map((group) =>
+                  group.columns.map((col) => (
                     <th
-                      key={col.key}
+                      key={String(col.key)}
                       className="px-4 py-2 text-left font-medium text-gray-700 border-b border-gray-300"
                     >
                       {col.label}
@@ -1256,95 +1228,47 @@ export default function ReportPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {currentRecords.map(record => {
-                const delinquent = isRecordDelinquent(record);
-                return (
-                  <tr
-                    key={record.id}
-                    className={`hover:bg-gray-100 ${delinquent ? 'bg-red-300' : 'odd:bg-white even:bg-gray-50'
-                      }`}
-                  >
-                    {columnGroups.flatMap(group =>
-                      group.columns.map(col => {
-                        let displayValue: React.ReactNode;
-                        if (col.key === 'expiredDate') {
-                          displayValue = computePeriodEnd(record.date, record.frequency)
-                            .toLocaleDateString();
-                        } else {
-                          const raw = (record as any)[col.key] ?? '';
-                          displayValue = col.format ? col.format(raw) : raw;
-                        }
-
-                        const isNoWrap = ['orNo', 'permits', 'Other', 'remarks'].includes(col.key as string);
-                        const tdClass = [
-                          'px-4 py-2 h-12 text-gray-700',           // <-- added h-12
-                          isNoWrap
-                            ? 'whitespace-nowrap'
-                            : 'overflow-hidden whitespace-normal',
-                        ].join(' ');
-
-                        return (
-                          <td key={`${record.id}-${col.key}`} className={tdClass}>
-                            <span className="inline-block w-full">{displayValue}</span>
-                          </td>
-
-                        );
-                      })
-                    )}
-
-
-
-
-
-                    {/* Actions column */}
-                    <td className="px-4 py-2 text-center no-print">
-                      <button
-                        onClick={() => handleEditRecord(record)}
-                        className="text-blue-600 hover:text-blue-800 mr-2"
-                        title="Edit"
-                      >
-                        <FaEdit />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteRecord(record.id)}
-                        className="text-red-600 hover:text-red-800"
-                        title="Delete"
-                      >
-                        <FaTrash />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {currentRecords.map((record) => (
+                <TableRow
+                  key={String(record.id)}
+                  record={record as any}
+                  groups={columnGroups}
+                  onEdit={handleEditRecord}
+                  onDelete={handleDeleteRecord}
+                  onView={(r) => setViewRecord(r)}
+                />
+              ))}
             </tbody>
-
-
           </table>
         </div>
 
-        {/* ─── PRINT (only when printing) ─── */}
+        {/* PRINT (render columns in chunks) */}
         <div className="print-container hidden print:block">
           {pages.map((cols, pageIdx) => (
             <div key={pageIdx} className="print-page">
               <table className="min-w-full table-auto text-sm text-left text-gray-500">
                 <thead className="bg-gray-50">
                   <tr>
-                    {cols.map(col => (
-                      <th key={col.key} className="px-4 py-2 border-b border-gray-300">
+                    {cols.map((col) => (
+                      <th key={String(col.key)} className="px-4 py-2 border-b border-gray-300">
                         {col.label}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {currentRecords.map(record => (
-                    <tr key={`${record.id}-${pageIdx}`} className={`relative ${isRecordDelinquent(record) ? 'expired-row' : ''}`}>
-
-                      {cols.map(col => {
-                        const raw = (record as any)[col.key] ?? '';
-                        const val = col.format ? col.format(raw) : raw;
+                  {currentRecords.map((record) => (
+                    <tr
+                      key={`${record.id}-${pageIdx}`}
+                      className={`relative ${record._delinquent ? "expired-row" : ""}`}
+                    >
+                      {cols.map((col) => {
+                        const raw =
+                          (record as any)[col.key] ??
+                          (col.key === "expiredDate" ? (record as any)._expiredDate : "");
+                        const val = (col as any).format ? (col as any).format(raw) : raw;
                         return (
-                          <td key={`${record.id}-${col.key}`} className="px-4 py-2">
+                          <td key={`${record.id}-${String(col.key)}`} className="px-4 py-2">
                             {val}
                           </td>
                         );
@@ -1357,6 +1281,7 @@ export default function ReportPage() {
           ))}
         </div>
 
+        {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex justify-center mt-4 space-x-2 no-print">
             <button
@@ -1370,7 +1295,9 @@ export default function ReportPage() {
               <button
                 key={page}
                 onClick={() => setCurrentPage(page)}
-                className={`px-3 py-1 border rounded ${page === currentPage ? 'bg-blue-600 text-white' : 'bg-white text-blue-600'}`}
+                className={`px-3 py-1 border rounded ${
+                  page === currentPage ? "bg-blue-600 text-white" : "bg-white text-blue-600"
+                }`}
               >
                 {page}
               </button>
@@ -1386,7 +1313,7 @@ export default function ReportPage() {
         )}
       </div>
 
-      {/* NEW RECORD MODAL */}
+      {/* ADD RECORD MODAL */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-300 bg-opacity-50 overflow-y-auto no-print">
           <div className="relative bg-white shadow-lg rounded max-w-5xl w-full mx-4 my-10 max-h-[90vh] overflow-y-auto p-6">
@@ -1402,66 +1329,98 @@ export default function ReportPage() {
                 <>
                   <h3 className="text-2xl font-semibold my-4">Applicant Details</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {[
-                      { label: 'Applicant Name', name: 'applicantName', type: 'text' },
-                      { label: 'Applicant Address', name: 'applicantAddress', type: 'text' },
-                      { label: 'Business Name', name: 'businessName', type: 'text' },
-                      { label: 'Nature of Business', name: 'natureOfBusiness', type: 'text' },
-                      { label: 'Capital Investment', name: 'capitalInvestment', type: 'number' },
-                    ].map((input) => (
-                      <div key={input.name}>
-                        <label className="block font-medium text-gray-700">{input.label}</label>
-                        <input
-                          type="text"
-                          name="totalPayment"
-                          value={(formData as any).totalPayment}
-                          readOnly
-                          className="border p-2 w-full bg-gray-100 cursor-not-allowed"
-                        />
-                      </div>
-                    ))}
+                    {/* FIXED: previously these inputs incorrectly showed totalPayment */}
+                    <div>
+                      <label className="block font-medium text-gray-700">Applicant Name</label>
+                      <input
+                        type="text"
+                        name="applicantName"
+                        value={formData.applicantName}
+                        onChange={handleInputChange}
+                        className="border p-2 w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-gray-700">Applicant Address</label>
+                      <input
+                        type="text"
+                        name="applicantAddress"
+                        value={formData.applicantAddress}
+                        onChange={handleInputChange}
+                        className="border p-2 w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-gray-700">Business Name</label>
+                      <input
+                        type="text"
+                        name="businessName"
+                        value={formData.businessName}
+                        onChange={handleInputChange}
+                        className="border p-2 w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-gray-700">Nature of Business</label>
+                      <input
+                        type="text"
+                        name="natureOfBusiness"
+                        value={formData.natureOfBusiness}
+                        onChange={handleInputChange}
+                        className="border p-2 w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-gray-700">Capital Investment</label>
+                      <input
+                        type="number"
+                        name="capitalInvestment"
+                        value={formData.capitalInvestment}
+                        onChange={handleInputChange}
+                        className="border p-2 w-full"
+                      />
+                    </div>
                   </div>
                   <hr className="my-4" />
                 </>
               )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[
-                  { label: 'Year', name: 'year', type: 'text' },
-                  { label: 'Date', name: 'date', type: 'date' },
-                  { label: 'Gross', name: 'gross', type: 'text' },
-                  { label: 'OR No.', name: 'orNo', type: 'text' },
-                  { label: 'BUS TAX', name: 'busTax', type: 'text' },
-                  { label: "Mayor's Permit", name: 'mayorsPermit', type: 'text' },
-                  { label: 'Sanitary Inps', name: 'sanitaryInps', type: 'text' },
-                  { label: 'Police Clearance', name: 'policeClearance', type: 'text' },
-                  { label: 'Barangay Clearance', name: 'barangayClearance', type: 'text' },
-                  { label: 'Zoning Clearance', name: 'zoningClearance', type: 'text' },
-                  { label: 'Tax Clearance', name: 'taxClearance', type: 'text' },
-                  { label: 'Garbage', name: 'garbage', type: 'text' },
-                  { label: 'Verification', name: 'verification', type: 'text' },
-                  { label: 'Weight & Mass', name: 'weightAndMass', type: 'text' },
-                  { label: 'Health Clearance', name: 'healthClearance', type: 'text' },
-                  { label: 'SEC Fee', name: 'secFee', type: 'text' },
-                  { label: 'MENRO', name: 'menro', type: 'text' },
-                  { label: 'Doc Tax', name: 'docTax', type: 'text' },
-                  { label: "Egg's Fee", name: 'eggsFee', type: 'text' },
-                  { label: 'Market Certification', name: 'marketCertification', type: 'text' },
-                  { label: '25% Surcharge', name: 'surcharge25', type: 'text' },
-                  { label: '2% Month', name: 'sucharge2', type: 'text' },
-                  { label: 'Garbage Collection', name: 'garbageCollection', type: 'text' },
-                  { label: 'Polluters', name: 'polluters', type: 'text' },
-                  { label: 'Occupation', name: 'Occupation', type: 'text' },
-                  { label: 'Other', name: 'Other', type: 'textarea' },
-                  { label: 'Miscellaneous', name: 'miscellaneous', type: 'text' },
-                  { label: 'Total Payment', name: 'totalPayment', type: 'text', readOnly: true },
-                  { label: 'Remarks', name: 'remarks', type: 'text' },
-                  { label: 'Frequency', name: 'frequency', type: 'select' },
+                  { label: "Year", name: "year", type: "text" },
+                  { label: "Date", name: "date", type: "date" },
+                  { label: "Gross", name: "gross", type: "text" },
+                  { label: "OR No.", name: "orNo", type: "text" },
+                  { label: "BUS TAX", name: "busTax", type: "text" },
+                  { label: "Mayor's Permit", name: "mayorsPermit", type: "text" },
+                  { label: "Sanitary Inps", name: "sanitaryInps", type: "text" },
+                  { label: "Police Clearance", name: "policeClearance", type: "text" },
+                  { label: "Barangay Clearance", name: "barangayClearance", type: "text" },
+                  { label: "Zoning Clearance", name: "zoningClearance", type: "text" },
+                  { label: "Tax Clearance", name: "taxClearance", type: "text" },
+                  { label: "Garbage", name: "garbage", type: "text" },
+                  { label: "Verification", name: "verification", type: "text" },
+                  { label: "Weight & Mass", name: "weightAndMass", type: "text" },
+                  { label: "Health Clearance", name: "healthClearance", type: "text" },
+                  { label: "SEC Fee", name: "secFee", type: "text" },
+                  { label: "MENRO", name: "menro", type: "text" },
+                  { label: "Doc Tax", name: "docTax", type: "text" },
+                  { label: "Egg's Fee", name: "eggsFee", type: "text" },
+                  { label: "Market Certification", name: "marketCertification", type: "text" },
+                  { label: "25% Surcharge", name: "surcharge25", type: "text" },
+                  { label: "2% Month", name: "sucharge2", type: "text" },
+                  { label: "Garbage Collection", name: "garbageCollection", type: "text" },
+                  { label: "Polluters", name: "polluters", type: "text" },
+                  { label: "Occupation", name: "Occupation", type: "text" },
+                  { label: "Other", name: "Other", type: "textarea" as const },
+                  { label: "Miscellaneous", name: "miscellaneous", type: "text" },
+                  { label: "Total Payment", name: "totalPayment", type: "text" },
+                  { label: "Remarks", name: "remarks", type: "text" },
+                  { label: "Frequency", name: "frequency", type: "select" as const },
                 ].map((input) => (
                   <div key={input.name}>
                     <label className="block font-medium text-gray-700">{input.label}</label>
-
-                    {/*** Inject this check first ***/}
-                    {input.name === 'totalPayment' ? (
+                    {input.name === "totalPayment" ? (
                       <input
                         type="text"
                         name="totalPayment"
@@ -1469,7 +1428,7 @@ export default function ReportPage() {
                         readOnly
                         className="border p-2 w-full bg-gray-100 cursor-not-allowed"
                       />
-                    ) : input.type === 'select' ? (
+                    ) : input.type === "select" ? (
                       <select
                         name={input.name}
                         value={(formData as any)[input.name]}
@@ -1480,7 +1439,7 @@ export default function ReportPage() {
                         <option value="semi-annual">Semi-Annual</option>
                         <option value="annual">Annual</option>
                       </select>
-                    ) : input.type === 'textarea' ? (
+                    ) : input.type === "textarea" ? (
                       <textarea
                         name={input.name}
                         value={(formData as any)[input.name]}
@@ -1500,28 +1459,22 @@ export default function ReportPage() {
                   </div>
                 ))}
               </div>
-              {/* ─── Mayor’s Permits & Fees ───────────────────────────────── */}
-              <div className="space-y-4">
-                {/* Section Label */}
-                <h3 className="text-2xl font-semibold my-4">Mayor’s Permits & Fees</h3>
 
-                {/* Multi-select with search */}
+              {/* Mayor’s Permits & Fees */}
+              <div className="space-y-4">
+                <h3 className="text-2xl font-semibold my-4">Mayor’s Permits & Fees</h3>
                 <Select
                   isMulti
                   options={mpOptions}
-                  value={mpOptions.filter(o =>
-                    selectedPermits.some(p => p.mayorPermitId === o.value)
+                  value={mpOptions.filter((o) =>
+                    selectedPermits.some((p) => p.mayorPermitId === o.value)
                   )}
-                  onChange={opts => handlePermitsChange(opts as MultiValue<MPOption>)}
+                  onChange={(opts) => handlePermitsChange(opts as MultiValue<MPOption>)}
                   placeholder="Type to search permits..."
                   className="w-full mb-2"
                   classNamePrefix="react-select"
-                  styles={{
-                    control: base => ({ ...base, borderRadius: '0.5rem', padding: '2px' }),
-                  }}
+                  styles={{ control: (base) => ({ ...base, borderRadius: "0.5rem", padding: "2px" }) }}
                 />
-
-                {/* Table only shows once you’ve picked at least one */}
                 {selectedPermits.length > 0 && (
                   <div className="bg-white shadow rounded-lg overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
@@ -1539,9 +1492,9 @@ export default function ReportPage() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-100">
-                        {selectedPermits.map(p => {
+                        {selectedPermits.map((p) => {
                           const label =
-                            mpOptions.find(o => o.value === p.mayorPermitId)?.label || "";
+                            mpOptions.find((o) => o.value === p.mayorPermitId)?.label || "";
                           return (
                             <tr key={p.mayorPermitId}>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
@@ -1552,21 +1505,20 @@ export default function ReportPage() {
                                   type="number"
                                   min="0"
                                   step="0.01"
-                                  value={p.amount}
-                                  onChange={e =>
+                                  value={String(p.amount)}
+                                  onChange={(e) =>
                                     handlePermitAmountChange(p.mayorPermitId, e.target.value)
                                   }
                                   className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
                                   placeholder="0.00"
                                 />
-
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-center">
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    setSelectedPermits(old =>
-                                      old.filter(item => item.mayorPermitId !== p.mayorPermitId)
+                                    setSelectedPermits((old) =>
+                                      old.filter((item) => item.mayorPermitId !== p.mayorPermitId)
                                     )
                                   }
                                   className="text-red-500 hover:text-red-700"
@@ -1583,7 +1535,6 @@ export default function ReportPage() {
                 )}
               </div>
 
-
               <div className="mt-4 flex justify-end">
                 <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
                   Submit
@@ -1593,7 +1544,7 @@ export default function ReportPage() {
           </div>
         </div>
       )}
-      {/* ───────────────────────────────────────────────────────────── */}
+
       {/* EDIT RECORD MODAL */}
       {editRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-300 bg-opacity-50 overflow-y-auto no-print">
@@ -1606,59 +1557,55 @@ export default function ReportPage() {
             </button>
             <form onSubmit={handleEditFormSubmit}>
               <h2 className="text-xl font-bold mb-4">Edit Record</h2>
-
-              {/* Existing grid of inputs for editing */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[
-                  { label: 'Year', name: 'year', type: 'text' },
-                  { label: 'Date', name: 'date', type: 'date' },
-                  { label: 'Gross', name: 'gross', type: 'text' },
-                  { label: 'OR No.', name: 'orNo', type: 'text' },
-                  { label: 'BUS TAX', name: 'busTax', type: 'text' },
-                  { label: "Mayor's Permit", name: 'mayorsPermit', type: 'text' },
-                  { label: 'Sanitary Inps', name: 'sanitaryInps', type: 'text' },
-                  { label: 'Police Clearance', name: 'policeClearance', type: 'text' },
-                  { label: 'Barangay Clearance', name: 'barangayClearance', type: 'text' },
-                  { label: 'Zoning Clearance', name: 'zoningClearance', type: 'text' },
-                  { label: 'Tax Clearance', name: 'taxClearance', type: 'text' },
-                  { label: 'Garbage', name: 'garbage', type: 'text' },
-                  { label: 'Verification', name: 'verification', type: 'text' },
-                  { label: 'Weight & Mass', name: 'weightAndMass', type: 'text' },
-                  { label: 'Health Clearance', name: 'healthClearance', type: 'text' },
-                  { label: 'SEC Fee', name: 'secFee', type: 'text' },
-                  { label: 'MENRO', name: 'menro', type: 'text' },
-                  { label: 'Doc Tax', name: 'docTax', type: 'text' },
-                  { label: "Egg's Fee", name: 'eggsFee', type: 'text' },
-                  { label: 'Market Certification', name: 'marketCertification', type: 'text' },
-                  { label: '25% Surcharge', name: 'surcharge25', type: 'text' },
-                  { label: '2% Month', name: 'sucharge2', type: 'text' },
-                  { label: 'Miscellaneous', name: 'miscellaneous', type: 'text' },
-                  { label: 'Garbage Collection', name: 'garbageCollection', type: 'text' },
-                  { label: 'Polluters', name: 'polluters', type: 'text' },
-                  { label: 'Occupation', name: 'Occupation', type: 'text' },
-                  { label: 'Other', name: 'Other', type: 'textarea' },
-                  { label: 'Total Payment', name: 'totalPayment', type: 'text' },
-                  { label: 'Remarks', name: 'remarks', type: 'text' },
-                  { label: 'Frequency', name: 'frequency', type: 'select' },
-                  { label: 'Renewed', name: 'renewed', type: 'checkbox' },
+                  { label: "Year", name: "year", type: "text" },
+                  { label: "Date", name: "date", type: "date" },
+                  { label: "Gross", name: "gross", type: "text" },
+                  { label: "OR No.", name: "orNo", type: "text" },
+                  { label: "BUS TAX", name: "busTax", type: "text" },
+                  { label: "Mayor's Permit", name: "mayorsPermit", type: "text" },
+                  { label: "Sanitary Inps", name: "sanitaryInps", type: "text" },
+                  { label: "Police Clearance", name: "policeClearance", type: "text" },
+                  { label: "Barangay Clearance", name: "barangayClearance", type: "text" },
+                  { label: "Zoning Clearance", name: "zoningClearance", type: "text" },
+                  { label: "Tax Clearance", name: "taxClearance", type: "text" },
+                  { label: "Garbage", name: "garbage", type: "text" },
+                  { label: "Verification", name: "verification", type: "text" },
+                  { label: "Weight & Mass", name: "weightAndMass", type: "text" },
+                  { label: "Health Clearance", name: "healthClearance", type: "text" },
+                  { label: "SEC Fee", name: "secFee", type: "text" },
+                  { label: "MENRO", name: "menro", type: "text" },
+                  { label: "Doc Tax", name: "docTax", type: "text" },
+                  { label: "Egg's Fee", name: "eggsFee", type: "text" },
+                  { label: "Market Certification", name: "marketCertification", type: "text" },
+                  { label: "25% Surcharge", name: "surcharge25", type: "text" },
+                  { label: "2% Month", name: "sucharge2", type: "text" },
+                  { label: "Miscellaneous", name: "miscellaneous", type: "text" },
+                  { label: "Garbage Collection", name: "garbageCollection", type: "text" },
+                  { label: "Polluters", name: "polluters", type: "text" },
+                  { label: "Occupation", name: "Occupation", type: "text" },
+                  { label: "Other", name: "Other", type: "textarea" as const },
+                  { label: "Total Payment", name: "totalPayment", type: "text" },
+                  { label: "Remarks", name: "remarks", type: "text" },
+                  { label: "Frequency", name: "frequency", type: "select" as const },
+                  { label: "Renewed", name: "renewed", type: "checkbox" as const },
                 ].map((input) => (
                   <div key={input.name}>
                     <label className="block font-medium text-gray-700">{input.label}</label>
-
-                    {/* Total Payment should be read-only */}
-                    {input.name === 'totalPayment' ? (
+                    {input.name === "totalPayment" ? (
                       <input
                         type="text"
                         name="totalPayment"
-                        value={(editRecord as any).totalPayment || ''}
+                        value={(editRecord as any).totalPayment || ""}
                         readOnly
                         disabled
                         className="border p-2 w-full bg-gray-100 cursor-not-allowed"
                       />
-                    ) : input.type === 'select' ? (
+                    ) : input.type === "select" ? (
                       <select
                         name={input.name}
-                        value={(editRecord as any)[input.name] || ''}
+                        value={(editRecord as any)[input.name] || ""}
                         onChange={handleEditInputChange}
                         className="border p-2 w-full"
                       >
@@ -1666,7 +1613,7 @@ export default function ReportPage() {
                         <option value="semi-annual">Semi-Annual</option>
                         <option value="annual">Annual</option>
                       </select>
-                    ) : input.type === 'checkbox' && input.name === 'renewed' ? (
+                    ) : input.type === "checkbox" && input.name === "renewed" ? (
                       <input
                         type="checkbox"
                         name={input.name}
@@ -1674,80 +1621,53 @@ export default function ReportPage() {
                         onChange={handleEditInputChange}
                         className="border p-2"
                       />
-
-
-                    //   old version of check box uncomment this if its needed
-                    // input.type === 'checkbox' && input.name === 'renewed' ? (
-                    // <input
-                    //   type="checkbox"
-                    //   name={input.name}
-                    //   checked={(editRecord as any)[input.name] || false}
-                    //   onChange={handleEditInputChange}
-                    //   className="border p-2"
-                    //   disabled={
-                    //     !isRecordDelinquent(editRecord as any)
-                    //   }
-                    //   title={
-                    //     new Date() < computeRenewalDueDate(
-                    //       new Date((editRecord as any).date),
-                    //       (editRecord as any).frequency
-                    //     )
-                    //       ? 'Cannot renew until expired.'
-                    //       : ''
-                    //   }
-                    // />
-
-
-                    ) : input.type === 'date' ? (
-                    <input
-                      type="date"
-                      name={input.name}
-                      value={editRecord?.date ? editRecord.date.split('T')[0] : ''}
-                      onChange={handleEditInputChange}
-                      className="border p-2 w-full"
-                    />
-                    ) : input.type === 'textarea' ? (
-                    <textarea
-                      name={input.name}
-                      value={(editRecord as any)[input.name] || ''}
-                      onChange={handleEditInputChange}
-                      className="border p-2 w-full"
-                    />
+                    ) : input.type === "date" ? (
+                      <input
+                        type="date"
+                        name={input.name}
+                        value={
+                          (editRecord as any)?.date
+                            ? String((editRecord as any).date).split("T")[0]
+                            : ""
+                        }
+                        onChange={handleEditInputChange}
+                        className="border p-2 w-full"
+                      />
+                    ) : input.type === "textarea" ? (
+                      <textarea
+                        name={input.name}
+                        value={(editRecord as any)[input.name] || ""}
+                        onChange={handleEditInputChange}
+                        className="border p-2 w-full"
+                      />
                     ) : (
-                    <input
-                      type={input.type}
-                      name={input.name}
-                      value={(editRecord as any)[input.name] || ''}
-                      onChange={handleEditInputChange}
-                      className="border p-2 w-full"
-                    />
+                      <input
+                        type={input.type}
+                        name={input.name}
+                        value={(editRecord as any)[input.name] || ""}
+                        onChange={handleEditInputChange}
+                        className="border p-2 w-full"
+                      />
                     )}
                   </div>
                 ))}
               </div>
 
-              {/* ─── Mayor’s Permits & Fees (Edit) ─────────────────────────── */}
+              {/* Mayor’s Permits & Fees (Edit) */}
               <div className="space-y-4">
-                {/* Section Label */}
                 <h3 className="text-2xl font-semibold my-4">Mayor’s Permits & Fees</h3>
-
-                {/* Multi-select with search */}
                 <Select
                   isMulti
                   options={mpOptions}
-                  value={mpOptions.filter(o =>
-                    selectedPermits.some(p => p.mayorPermitId === o.value)
+                  value={mpOptions.filter((o) =>
+                    selectedPermits.some((p) => p.mayorPermitId === o.value)
                   )}
-                  onChange={opts => handlePermitsChange(opts as MultiValue<MPOption>)}
+                  onChange={(opts) => handlePermitsChange(opts as MultiValue<MPOption>)}
                   placeholder="Type to search permits..."
                   className="w-full mb-2"
                   classNamePrefix="react-select"
-                  styles={{
-                    control: base => ({ ...base, borderRadius: '0.5rem', padding: '2px' }),
-                  }}
+                  styles={{ control: (base) => ({ ...base, borderRadius: "0.5rem", padding: "2px" }) }}
                 />
-
-                {/* Table only shows once you’ve picked at least one */}
                 {selectedPermits.length > 0 && (
                   <div className="bg-white shadow rounded-lg overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
@@ -1765,9 +1685,9 @@ export default function ReportPage() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-100">
-                        {selectedPermits.map(p => {
+                        {selectedPermits.map((p) => {
                           const label =
-                            mpOptions.find(o => o.value === p.mayorPermitId)?.label || "";
+                            mpOptions.find((o) => o.value === p.mayorPermitId)?.label || "";
                           return (
                             <tr key={p.mayorPermitId}>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
@@ -1778,8 +1698,8 @@ export default function ReportPage() {
                                   type="number"
                                   min="0"
                                   step="0.01"
-                                  value={p.amount}
-                                  onChange={e =>
+                                  value={String(p.amount)}
+                                  onChange={(e) =>
                                     handlePermitAmountChange(p.mayorPermitId, e.target.value)
                                   }
                                   className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -1790,8 +1710,8 @@ export default function ReportPage() {
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    setSelectedPermits(old =>
-                                      old.filter(item => item.mayorPermitId !== p.mayorPermitId)
+                                    setSelectedPermits((old) =>
+                                      old.filter((item) => item.mayorPermitId !== p.mayorPermitId)
                                     )
                                   }
                                   className="text-red-500 hover:text-red-700"
@@ -1807,13 +1727,9 @@ export default function ReportPage() {
                   </div>
                 )}
               </div>
-              {/* ───────────────────────────────────────────────────────────── */}
 
               <div className="mt-4 flex justify-end">
-                <button
-                  type="submit"
-                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                >
+                <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
                   Save Changes
                 </button>
               </div>
@@ -1822,6 +1738,23 @@ export default function ReportPage() {
         </div>
       )}
 
+      {/* VIEW RECORD MODAL */}
+      <RecordViewModal
+        open={!!viewRecord}
+        record={viewRecord}
+        groups={columnGroups as any}
+        onClose={() => setViewRecord(null)}
+        onEdit={(r) => {
+          setEditRecord(r);
+          setViewRecord(null);
+          setSelectedPermits(
+            (r?.permits ?? []).map((p: any) => ({
+              mayorPermitId: p.id,
+              amount: String(p.BusinessRecordPermit.amount),
+            }))
+          );
+        }}
+      />
     </div>
   );
 }
